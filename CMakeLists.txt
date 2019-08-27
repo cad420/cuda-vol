@@ -37,4 +37,10 @@ cuda_add_executable(vol
   ${SOURCES}
 )
 
-target_link_libraries(vol pthread)
+if ("${CMAKE_CXX_COMPILER}" MATCHES "MSVC")
+  set(LINK_LIBRARIES)
+else()
+  set(LINK_LIBRARIES pthread)
+endif()
+
+target_link_libraries(vol ${LINK_LIBRARIES})

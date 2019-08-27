@@ -4,33 +4,74 @@
 #include <cstdint>
 #include <memory>
 #include <iostream>
+#include <functional>
 #include <cuda_runtime.h>
+
+#include "concepts.hpp"
 
 namespace vol
 {
 namespace cuda
 {
-enum class StreamStatus : uint32_t
+enum class Poll : uint32_t
 {
 	Pending = 0,
 	Done = 1,
 	Error = 2
 };
 
-inline std::ostream &operator<<( std::ostream &os, StreamStatus stat )
+inline std::ostream &operator<<( std::ostream &os, Poll stat )
 {
 	switch ( stat ) {
-	case StreamStatus::Pending: return os << "Pending";
-	case StreamStatus::Done: return os << "Done";
-	case StreamStatus::Error: return os << "Error";
-	default: throw std::runtime_error( "invalid internal state: StreamStatus" );
+	case Poll::Pending: return os << "Pending";
+	case Poll::Done: return os << "Done";
+	case Poll::Error: return os << "Error";
+	default: throw std::runtime_error( "invalid internal state: Poll" );
 	}
 }
+
+inline Poll from_cuda_poll_result( cudaError_t ret )
+{
+	switch ( ret ) {
+	case cudaSuccess:
+		return Poll::Done;
+	case cudaErrorNotReady:
+		return Poll::Pending;
+	default:
+		return Poll::Error;
+	}
+}
+
+struct Event
+{
+private:
+	struct Inner : NoCopy, NoMove
+	{
+		~Inner() { cudaEventDestroy( _ ); }
+
+		cudaEvent_t _;
+	};
+
+public:
+	Event( bool enable_timing = false )
+	{
+		unsigned flags = cudaEventBlockingSync;
+		if ( !enable_timing ) flags |= cudaEventDisableTiming;
+		cudaEventCreateWithFlags( &_->_, flags );
+	}
+
+	void record() const { cudaEventRecord( _->_ ); }
+	Poll poll() const { return from_cuda_poll_result( cudaEventQuery( _->_ ) ); }
+	bool wait() const { return cudaEventSynchronize( _->_ ) == cudaSuccess; }
+
+private:
+	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
+};
 
 struct Stream
 {
 private:
-	struct Inner
+	struct Inner : NoCopy, NoMove
 	{
 		~Inner()
 		{
@@ -38,28 +79,33 @@ private:
 		}
 
 		cudaStream_t _ = 0;
+		std::mutex mtx;
 	};
 
 	Stream( std::nullptr_t ) {}
 
 public:
+	struct Lock : NoCopy, NoHeap
+	{
+		Lock( Inner &stream ) :
+		  stream( stream ),
+		  _( stream.mtx )
+		{
+		}
+
+		cudaStream_t get() const { return stream._; }
+
+	private:
+		Inner &stream;
+		std::unique_lock<std::mutex> _;
+	};
+
+public:
 	Stream() { cudaStreamCreate( &_->_ ); }
 
-	StreamStatus poll() const
-	{
-		switch ( cudaStreamQuery( _->_ ) ) {
-		case cudaSuccess:
-			return StreamStatus::Done;
-		case cudaErrorNotReady:
-			return StreamStatus::Pending;
-		default:
-			return StreamStatus::Error;
-		}
-	}
-
+	Poll poll() const { return from_cuda_poll_result( cudaStreamQuery( _->_ ) ); }
 	bool wait() const { return cudaStreamSynchronize( _->_ ) == cudaSuccess; }
-
-	cudaStream_t get() const { return _->_; }
+	Lock lock() const { return Lock( *_ ); }
 
 public:
 	static Stream null() { return Stream( nullptr ); }
@@ -68,19 +114,53 @@ private:
 	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
 };
 
-enum class ExecutionStatus : uint32_t
+enum class Result : uint32_t
 {
 	Ok = 0,
 	Err = 1,
 };
-inline std::ostream &operator<<( std::ostream &os, ExecutionStatus stat )
+
+inline std::ostream &operator<<( std::ostream &os, Result stat )
 {
 	switch ( stat ) {
-	case ExecutionStatus::Ok: return os << "Ok";
-	case ExecutionStatus::Err: return os << "Err";
-	default: throw std::runtime_error( "invalid internal state: ExecutionStatus" );
+	case Result::Ok: return os << "Ok";
+	case Result::Err: return os << "Err";
+	default: throw std::runtime_error( "invalid internal state: Result" );
 	}
 }
+
+struct Task : NoCopy
+{
+	Task( std::function<void( cudaStream_t )> &&_ ) :
+	  _( std::move( _ ) ) {}
+
+	std::future<Result> launch_async( Stream const &stream = Stream() ) &&
+	{
+		Event event;
+		{
+			auto lock = stream.lock();
+			_( lock.get() );
+			event.record();
+		}
+		return std::async( std::launch::deferred, [=]() -> Result {
+			if ( event.wait() ) {
+				return Result::Ok;
+			} else {
+				return Result::Err;
+			}
+		} );
+	}
+
+	Result launch( Stream const &stream = Stream() ) &&
+	{
+		auto future = std::move( *this ).launch_async( stream );
+		future.wait();
+		return future.get();
+	}
+
+private:
+	std::function<void( cudaStream_t )> _;
+};
 
 struct KernelLaunchInfo
 {
@@ -113,32 +193,15 @@ template <typename Ret, typename... Args>
 struct Kernel<Ret( Args... )>
 {
 private:
-	using Launcher = void( KernelLaunchInfo const &, Args... args, Stream const & );
+	using Launcher = void( KernelLaunchInfo const &, Args... args, cudaStream_t );
 
 public:
 	Kernel( Launcher *_ ) :
 	  _( _ ) {}
 
-	std::future<ExecutionStatus> launch_async( KernelLaunchInfo const &info,
-											   Args &&... args,
-											   Stream stream = Stream() )
+	Task operator()( KernelLaunchInfo const &info, Args... args )
 	{
-		_( info, args..., stream );
-		return std::async( std::launch::deferred, [=]() -> ExecutionStatus {
-			if ( stream.wait() ) {
-				return ExecutionStatus::Ok;
-			} else {
-				return ExecutionStatus::Err;
-			}
-		} );
-	}
-
-	ExecutionStatus launch( KernelLaunchInfo const &info, Args &&... args )
-	{
-		auto stream = Stream::null();
-		auto future = launch_async( info, std::forward<Args>( args )..., stream );
-		future.wait();
-		return future.get();
+		return Task( [=]( cudaStream_t stream ) { _( info, args..., stream ); } );
 	}
 
 private:
@@ -174,10 +237,10 @@ struct Functionlify<Ret ( *const )( Args... )> : Functionlify<Ret( Args... )>
 	struct __Kernel_Impl_##impl<Ret( Args... )>                                    \
 	{                                                                              \
 		static void launch( vol::cuda::KernelLaunchInfo const &info, Args... args, \
-							::vol::cuda::Stream const &stream )                    \
+							cudaStream_t               stream )                    \
 		{                                                                          \
 			impl<<<info.grid_dim, info.block_dim, info.shm_per_block_bytes,        \
-				   stream.get()>>>( args... );                                     \
+				   stream>>>( args... );                                           \
 		}                                                                          \
 	};                                                                             \
 	}                                                                              \

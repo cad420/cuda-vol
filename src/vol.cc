@@ -25,6 +25,6 @@ int main( int argc, char **argv )
 	auto launch_info = cuda::KernelLaunchInfo{}
 						 .setGridDim( 1 )
 						 .setBlockDim( 1 );
-	auto res = compute_kernel.launch( launch_info );
+	auto res = compute_kernel( launch_info ).launch();
 	cout << res << endl;
 }
