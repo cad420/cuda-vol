@@ -4,6 +4,7 @@
 #include <stb/stb_image_write.h>
 
 #include "memory.hpp"
+#include "transfer.hpp"
 #include <utils/attribute.hpp>
 
 namespace vol
@@ -28,64 +29,37 @@ struct Image;
 template <typename Pixel>
 struct ImageView final
 {
-	__host__ Pixel &at_host( uint x, uint y ) const
-	{
-		return host_ptr[ x + y * stride ];
-	}
-	__device__ Pixel &at_device( uint x, uint y ) const
-	{
-		return device_mem.data<Pixel>()[ x + y * w ];
-	}
-	__host__ __device__ uint width() const { return w; }
-	__host__ __device__ uint height() const { return h; }
+	__host__ Pixel &at_host( uint x, uint y ) const { return host_mem.at( x, y ); }
+	__device__ Pixel &at_device( uint x, uint y ) const { return device_mem.at( x, y ); }
+	__host__ __device__ uint width() const { return host_mem.width(); }
+	__host__ __device__ uint height() const { return host_mem.height(); }
 
 public:
-	ImageView with_global_memory( GlobalMemory const &memory ) const
+	ImageView with_device_memory( MemoryView2D<Pixel> const &memory ) const
 	{
 		auto _ = *this;
-		_.device_mem = memory.view();
+		if ( memory.location() != MemoryLocation::Device ) {
+			throw std::runtime_error( "invalid device memory view" );
+		}
+		_.device_mem = memory;
 		return _;
 	}
 	Task copy_from_device() const
 	{
-		Task task;
-		auto device_ptr = device_mem.data<>();
-		for ( uint i = 0; i < h; ++i ) {
-			auto host_ptr_line = &at_host( 0, i );
-			auto device_ptr_line = &at_device( 0, i );
-			auto device_begin =
-			  reinterpret_cast<char *>( device_ptr_line ) - device_ptr;
-			task.chain(
-			  device_mem.copy_to( host_ptr_line, device_begin, sizeof( Pixel ) * w ) );
-		}
-		return task;
+		return memory_transfer( host_mem, device_mem );
 	}
 	Task copy_to_device() const
 	{
-		Task task;
-		auto device_ptr = device_mem.data<>();
-		for ( uint i = 0; i < h; ++i ) {
-			auto host_ptr_line = &at_host( 0, i );
-			auto device_ptr_line = &at_device( 0, i );
-			auto device_begin =
-			  reinterpret_cast<char *>( device_ptr_line ) - device_ptr;
-			task.chain(
-			  device_mem.copy_from( host_ptr_line, device_begin, sizeof( Pixel ) * w ) );
-		}
-		return task;
+		return memory_transfer( device_mem, host_mem );
 	}
 
 private:
-	ImageView( uint w, uint h, uint stride, Pixel *host_ptr ) :
-	  w( w ),
-	  h( h ),
-	  stride( stride ),
-	  host_ptr( host_ptr ) {}
+	ImageView( MemoryView2D<Pixel> const &mem ) :
+	  host_mem( mem ) {}
 
 private:
-	uint w, h, stride;
-	Pixel *host_ptr;
-	MemoryView device_mem = MemoryView::null();
+	MemoryView2D<Pixel> host_mem;
+	MemoryView2D<Pixel> device_mem;
 	friend struct Image<Pixel>;
 };
 
@@ -125,8 +99,14 @@ public:
 
 	ImageView<Pixel> view( Rect const &region ) const
 	{
-		auto ptr_region = &at( region.x0, region.y0 );
-		return ImageView<Pixel>( region.width(), region.height(), width, ptr_region );
+		auto ptr_region = reinterpret_cast<char *>( &at( region.x0, region.y0 ) );
+		auto ptr_region_ln1 = reinterpret_cast<char *>( &at( region.x0, region.y0 + 1 ) );
+		auto view = MemoryView2DInfo{}
+					  .set_stride( ptr_region_ln1 - ptr_region )
+					  .set_width( region.width() )
+					  .set_height( region.height() );
+		auto mem = MemoryView2D<Pixel>( ptr_region, view );
+		return ImageView<Pixel>( mem );
 	}
 	ImageView<Pixel> view() const
 	{
@@ -153,6 +133,7 @@ private:
 	uint width, height;
 	Pixel *pixels;
 };
+
 }  // namespace cuda
 
 }  // namespace vol

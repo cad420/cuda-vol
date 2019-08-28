@@ -27,24 +27,39 @@ int main( int argc, char **argv )
 	auto in = opts[ "i" ].as<string>();
 	auto out = opts[ "o" ].as<string>();
 
-	auto block_dim = VolumeBlockDim{}
+	auto block_dim = cuda::Extent{}
 					   .set_width( opts[ "x" ].as<unsigned>() )
 					   .set_height( opts[ "y" ].as<unsigned>() )
 					   .set_depth( opts[ "z" ].as<unsigned>() );
-	auto volume = Volume<char>::from_raw( in, block_dim );
+	auto volume = Volume<Voxel>::from_raw( in, block_dim );
 
 	std::cout << "total blocks: " << volume.block_count() << std::endl;
 	auto block = volume.get_block( 0 );
+	auto block_arr = cuda::Array3D<Voxel>( block_dim );
+	auto res = cuda::memory_transfer( block_arr, block.view() ).launch();
+	cout << res << endl;
+	if ( res == cuda::Result::Err ) {
+		auto err = cudaGetLastError();
+		std::cout << cudaGetErrorName( err ) << std::endl;
+	}
+	bind_texture( block_arr );
 
 	cuda::Image<Pixel> image( 512, 512 );
-	cuda::GlobalMemory mem( 512 * 512 * sizeof( Pixel ) );
+	cuda::GlobalMemory mem( 256 * 400 * sizeof( Pixel ) );
+	auto view_info = cuda::MemoryView2DInfo{}
+					   .set_stride( 256 * sizeof( Pixel ) )
+					   .set_width( 256 )
+					   .set_height( 400 );
 	auto view =
-	  image.view( cuda::Rect{}.set_x1( 256 ).set_y1( 400 ) ).with_global_memory( mem );
+	  image.view( cuda::Rect{}
+					.set_x1( 256 )
+					.set_y1( 400 ) )
+		.with_device_memory( mem.view_2d<Pixel>( view_info ) );
 
 	auto launch_info = cuda::KernelLaunchInfo{}
 						 .set_grid_dim( 1 )
 						 .set_block_dim( 1 );
-	auto res = compute_kernel( launch_info, view ).launch();
+	res = compute_kernel( launch_info, view ).launch();
 	cout << res << endl;
 	if ( res == cuda::Result::Err ) {
 		auto err = cudaGetLastError();

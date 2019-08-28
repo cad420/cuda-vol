@@ -3,6 +3,8 @@
 #include <cuda/image.hpp>
 #include <cuda/kernel.hpp>
 
+#include <utils/volume.hpp>
+
 namespace vol
 {
 struct Pixel
@@ -12,5 +14,9 @@ struct Pixel
 	unsigned char x[ 4 ];
 };
 
+using Voxel = unsigned char;
+
 extern cuda::Kernel<void( cuda::ImageView<Pixel> view )> compute_kernel;
+extern void bind_texture( cuda::Array3D<Voxel> const &arr );
+
 }  // namespace vol

@@ -1,11 +1,11 @@
 #include "compute_kernel.hpp"
 
-using VoxelType = unsigned char;
-
-texture<VoxelType, cudaReadModeNormalizedFloat> tex;
+#include <cuda/array.hpp>
 
 namespace vol
 {
+texture<Voxel, 3, cudaReadModeNormalizedFloat> tex;
+
 __global__ void compute_kernel_impl( cuda::ImageView<Pixel> view )
 {
 	for ( int i = 0; i != view.height(); ++i ) {
@@ -17,4 +17,10 @@ __global__ void compute_kernel_impl( cuda::ImageView<Pixel> view )
 }
 
 VOL_DEFINE_CUDA_KERNEL( compute_kernel, compute_kernel_impl );
+
+void bind_texture( cuda::Array3D<Voxel> const &arr )
+{
+	arr.bind_to_texture( tex );
+}
+
 }  // namespace vol
