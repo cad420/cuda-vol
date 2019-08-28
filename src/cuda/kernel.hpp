@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stream.hpp"
+#include <utils/attribute.hpp>
 
 namespace vol
 {
@@ -8,26 +9,9 @@ namespace cuda
 {
 struct KernelLaunchInfo
 {
-	KernelLaunchInfo &setGridDim( dim3 const &_ )
-	{
-		grid_dim = _;
-		return *this;
-	}
-	KernelLaunchInfo &setBlockDim( dim3 const &_ )
-	{
-		block_dim = _;
-		return *this;
-	}
-	KernelLaunchInfo &setShmPerBlockBytes( std::size_t _ )
-	{
-		shm_per_block_bytes = _;
-		return *this;
-	}
-
-public:
-	dim3 grid_dim;
-	dim3 block_dim;
-	std::size_t shm_per_block_bytes = 0;
+	VOL_DEFINE_ATTRIBUTE( dim3, grid_dim );
+	VOL_DEFINE_ATTRIBUTE( dim3, block_dim );
+	VOL_DEFINE_ATTRIBUTE( std::size_t, shm_per_block );
 };
 
 template <typename F>
@@ -72,26 +56,23 @@ struct Functionlify<Ret ( *const )( Args... )> : Functionlify<Ret( Args... )>
 };
 
 /* clang-format off */
-#define VOL_DEFINE_CUDA_KERNEL( name, impl )                                       \
-	namespace                                                                      \
-	{                                                                              \
-	template <typename F>                                                          \
-	struct __Kernel_Impl_##impl;                                                   \
-	template <typename Ret, typename... Args>                                      \
-	struct __Kernel_Impl_##impl<Ret( Args... )>                                    \
-	{                                                                              \
-		static void launch( vol::cuda::KernelLaunchInfo const &info, Args... args, \
-							cudaStream_t               stream )                    \
-		{                                                                          \
-			impl<<<info.grid_dim, info.block_dim, info.shm_per_block_bytes,        \
-				   stream>>>( args... );                                           \
-		}                                                                          \
-	};                                                                             \
-	}                                                                              \
-	::vol::cuda::Kernel<                                                           \
-	  typename ::vol::cuda::Functionlify<decltype( impl )>::type>                  \
-	  name( __Kernel_Impl_##impl<                                                  \
-			typename ::vol::cuda::Functionlify<decltype( impl )>::type>::launch )
+#define VOL_DEFINE_CUDA_KERNEL(name, impl)                                     \
+  namespace {                                                                  \
+  template <typename F>                                                        \
+  struct __Kernel_Impl_##impl;                                                 \
+  template <typename Ret, typename... Args>                                    \
+  struct __Kernel_Impl_##impl<Ret(Args...)> {                                  \
+    static void launch(vol::cuda::KernelLaunchInfo const &info, Args... args,  \
+                       cudaStream_t stream) {                                  \
+      impl<<<info.grid_dim, info.block_dim, info.shm_per_block, stream>>>      \
+          (args...);                                                           \
+    }                                                                          \
+  };                                                                           \
+  }                                                                            \
+  ::vol::cuda::Kernel<                                                         \
+      typename ::vol::cuda::Functionlify<decltype(impl)>::type>                \
+  name(__Kernel_Impl_##impl<                                                   \
+      typename ::vol::cuda::Functionlify<decltype(impl)>::type>::launch)
 /* clang-format on */
 
 // #define VOL_CUDA_DEVICE __device__

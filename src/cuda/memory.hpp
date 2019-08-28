@@ -23,7 +23,7 @@ struct MemoryView
 			cudaMemcpyAsync( dst, _ + begin, len, kind, stream );
 		} );
 	}
-	Task copy_from( void *src, std::size_t begin, std::size_t len,
+	Task copy_from( void const *src, std::size_t begin, std::size_t len,
 					cudaMemcpyKind kind = cudaMemcpyHostToDevice ) const
 	{
 		return Task( [=]( cudaStream_t stream ) {

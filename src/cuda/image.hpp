@@ -4,6 +4,7 @@
 #include <stb/stb_image_write.h>
 
 #include "memory.hpp"
+#include <utils/attribute.hpp>
 
 namespace vol
 {
@@ -11,32 +12,14 @@ namespace cuda
 {
 struct Rect
 {
-	Rect &setX0( uint _ )
-	{
-		x0 = _;
-		return *this;
-	}
-	Rect &setY0( uint _ )
-	{
-		y0 = _;
-		return *this;
-	}
-	Rect &setX1( uint _ )
-	{
-		x1 = _;
-		return *this;
-	}
-	Rect &setY1( uint _ )
-	{
-		y1 = _;
-		return *this;
-	}
-
-	uint width() const { return x1 - x0; }
-	uint height() const { return y1 - y0; }
+	VOL_DEFINE_ATTRIBUTE( uint, x0 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( uint, y0 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( uint, x1 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( uint, y1 ) = 0;
 
 public:
-	uint x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	uint width() const { return x1 - x0; }
+	uint height() const { return y1 - y0; }
 };
 
 template <typename Pixel>
@@ -147,7 +130,7 @@ public:
 	}
 	ImageView<Pixel> view() const
 	{
-		return view( Rect{}.setX0( 0 ).setY0( 0 ).setX1( width ).setY1( height ) );
+		return view( Rect{}.set_x0( 0 ).set_y0( 0 ).set_x1( width ).set_y1( height ) );
 	}
 
 	Image &dump( std::string const &file_name )
