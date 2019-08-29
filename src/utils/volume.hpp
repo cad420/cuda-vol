@@ -4,30 +4,24 @@
 #include <string>
 #include <memory>
 
+#include <cuda/misc.hpp>
+#include <cuda/memory.hpp>
 #include <utils/attribute.hpp>
+#include <utils/concepts.hpp>
 
 namespace vol
 {
 template <typename Voxel>
 struct Volume;
 
-struct VolumeBlockDim
-{
-	VOL_DEFINE_ATTRIBUTE( unsigned, width );
-	VOL_DEFINE_ATTRIBUTE( unsigned, height );
-	VOL_DEFINE_ATTRIBUTE( unsigned, depth );
-
-public:
-	std::size_t size() const { return std::size_t( width ) * height * depth; }
-};
-
 template <typename Voxel>
 struct VolumeBlock
 {
 private:
-	struct Inner
+	struct Inner : NoCopy, NoMove
 	{
 		std::string _;
+		cuda::Extent dim;
 	};
 
 public:
@@ -35,13 +29,22 @@ public:
 	{
 		return reinterpret_cast<const Voxel *>( _->_.c_str() );
 	}
-	Voxel *data()
+	cuda::MemoryView3D<Voxel> view() const
 	{
-		return reinterpret_cast<Voxel *>( const_cast<char *>( _->_.c_str() ) );
+		auto view_info = cuda::MemoryView2DInfo{}
+						   .set_stride( this->_->dim.width * sizeof( Voxel ) )
+						   .set_width( this->_->dim.width )
+						   .set_height( this->_->dim.height );
+		return cuda::MemoryView3D<Voxel>( const_cast<char *>( _->_.c_str() ),
+										  view_info, this->_->dim );
 	}
 
 private:
-	VolumeBlock( std::string &&_ ) { this->_->_ = std::move( _ ); }
+	VolumeBlock( std::string &&_, cuda::Extent dim )
+	{
+		this->_->_ = std::move( _ );
+		this->_->dim = dim;
+	}
 
 	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
 	friend struct Volume<Voxel>;
@@ -50,8 +53,7 @@ private:
 template <typename Voxel>
 struct Volume
 {
-	static Volume from_raw( const std::string &file_name,
-							VolumeBlockDim const &dim )
+	static Volume from_raw( const std::string &file_name, cuda::Extent const &dim )
 	{
 		Volume vol( std::ifstream( file_name, std::ios::in | std::ios::binary ), dim );
 		vol.cnt = 1;
@@ -70,13 +72,13 @@ struct Volume
 		if ( nread != block_size ) {
 			throw std::runtime_error( "failed to read block" );
 		}
-		return VolumeBlock<Voxel>( std::move( buffer ) );
+		return VolumeBlock<Voxel>( std::move( buffer ), dim );
 	}
 
 	std::size_t block_count() const { return cnt; }
 
 private:
-	Volume( std::ifstream &&_, VolumeBlockDim const &dim ) :
+	Volume( std::ifstream &&_, cuda::Extent const &dim ) :
 	  _( std::move( _ ) ),
 	  dim( dim ) {}
 
@@ -84,6 +86,6 @@ private:
 	std::ifstream _;
 	std::size_t cnt;
 	std::size_t offset = 0;
-	VolumeBlockDim dim;
+	cuda::Extent dim;
 };
 }  // namespace vol
