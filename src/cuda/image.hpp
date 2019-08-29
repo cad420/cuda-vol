@@ -143,6 +143,7 @@ private:
 	std::size_t width, height;
 	Pixel *pixels;
 };
+
 }  // namespace cuda
 
 }  // namespace vol

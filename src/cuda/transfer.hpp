@@ -127,7 +127,8 @@ struct ArrayTrans<T, 3>
 		} );
 	}
 };
-}
+
+}  // namespace _
 
 template <typename T, std::size_t N>
 Task memory_transfer( MemoryViewND<T, N> const &dst, MemoryViewND<T, N> const &src )
@@ -140,5 +141,7 @@ Task memory_transfer( ArrayND<T, N> const &dst, MemoryViewND<T, N> const &src )
 {
 	return _::ArrayTrans<T, N>::transfer( dst, src );
 }
-}
-}
+
+}  // namespace cuda
+
+}  // namespace vol

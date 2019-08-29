@@ -39,6 +39,14 @@ int main( int argc, char **argv )
 	auto volume = Volume<Voxel>::from_raw( in, block_dim );
 	std::cout << "total blocks: " << volume.block_count() << std::endl;
 	auto block = volume.get_block( 0 );
+	auto block_arr = cuda::Array3D<Voxel>( block_dim );
+	auto res = cuda::memory_transfer( block_arr, block.view() ).launch();
+	cout << res << endl;
+	if ( res == cuda::Result::Err ) {
+		auto err = cudaGetLastError();
+		std::cout << cudaGetErrorName( err ) << std::endl;
+	}
+	bind_texture( block_arr );
 
 	auto block_arr = cuda::Array3D<Voxel>( block_dim );
 	auto res = cuda::memory_transfer( block_arr, block.view() ).launch();

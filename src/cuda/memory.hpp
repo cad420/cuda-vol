@@ -35,7 +35,7 @@ protected:
 	bool is_device = false;
 	friend struct cuda::GlobalMemory;
 };
-}
+}  // namespace _
 
 template <typename T, std::size_t N>
 struct MemoryViewND;

@@ -34,7 +34,8 @@ public:
 protected:
 	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
 };
-}
+
+}  // namespace _
 
 template <typename E, std::size_t N>
 struct ArrayND;
@@ -95,5 +96,7 @@ template <typename E>
 using Array2D = ArrayND<E, 2>;
 template <typename E>
 using Array3D = ArrayND<E, 3>;
-}
-}
+
+}  // namespace cuda
+
+}  // namespace vol

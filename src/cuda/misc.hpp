@@ -19,6 +19,6 @@ public:
 	cudaExtent get() const { return make_cudaExtent( width, height, depth ); }
 };
 
-}
+}  // namespace cuda
 
-}
+}  // namespace vol

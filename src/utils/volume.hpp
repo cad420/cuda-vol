@@ -88,4 +88,5 @@ private:
 	std::size_t offset = 0;
 	cuda::Extent dim;
 };
+
 }  // namespace vol
