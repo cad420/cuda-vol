@@ -47,7 +47,7 @@ int main( int argc, char **argv )
 	auto volume = Volume<Voxel>::from_raw( in, block_dim );
 	auto dim = volume.dim();
 	std::cout << "volume grid dim: " << dim.x << "," << dim.y << "," << dim.z << std::endl;
-	auto block = volume.get_block( uint3{ 0, 0, 0 } );
+	auto block = volume.get_block( uint3{ 0, 0, 0 } ).unarchieve();
 
 	auto block_arr = cuda::Array3D<Voxel>( block_dim );
 	bind_texture( block_arr );
