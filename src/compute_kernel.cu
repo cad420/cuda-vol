@@ -13,7 +13,6 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 	const float tstep = 0.01f;
 	const float opacity_threshold = 0.95f;
 	const float density = .05f;
-	const float brightness = 1.f;
 
 	uint x = blockIdx.x * blockDim.x + threadIdx.x;
 	uint y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -38,13 +37,13 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 		return;
 	}
 
-	float4 sum = { 0 };
 	auto t = tnear;
 	auto pos = eye.o + eye.d * t;
 	auto step = eye.d * tstep;
 
-	int i;
-	for ( i = 0; i < max_steps; ++i ) {
+	auto sum = out.at_device( x, y )._;
+
+	for ( int i = 0; i < max_steps; ++i ) {
 		float sample = tex3D( tex,
 							  pos.x * .5 + .5,
 							  pos.y * .5 + .5,
@@ -56,8 +55,6 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 		if ( t > tfar ) break;
 		pos += step;
 	}
-
-	sum *= brightness;
 
 	out.at_device( x, y )._ = sum;
 	// out.at_device( x, y )._ = { float( i ) / 2 / max_steps + .5, 0, 0, 1 };

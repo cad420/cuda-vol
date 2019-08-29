@@ -26,7 +26,7 @@ public:
 template <typename Pixel>
 struct Image;
 
-template <typename Pixel>
+template <typename Pixel = uchar4>
 struct ImageView final
 {
 	__host__ Pixel &at_host( uint x, uint y ) const { return host_mem.at( x, y ); }
@@ -63,13 +63,13 @@ private:
 	friend struct Image<Pixel>;
 };
 
-template <typename Pixel>
+template <typename Pixel = uchar4>
 struct Image final : NoCopy
 {
 	Image( std::size_t width, std::size_t height ) :
 	  width( width ),
 	  height( height ),
-	  pixels( new Pixel[ width * height ] ) {}
+	  pixels( new Pixel[ width * height ]() ) {}  // init to zero
 
 	Image( Image &&_ ) :
 	  width( _.width ),
@@ -143,6 +143,13 @@ private:
 	std::size_t width, height;
 	Pixel *pixels;
 };
+
+template <>
+inline void Image<>::dump( std::string const &file_name ) const
+{
+	stbi_write_png( file_name.c_str(), width, height, 4,
+					reinterpret_cast<unsigned char *>( pixels ), width * 4 );
+}
 
 }  // namespace cuda
 

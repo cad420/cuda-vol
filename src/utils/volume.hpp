@@ -53,40 +53,43 @@ private:
 template <typename Voxel>
 struct Volume
 {
-	static Volume from_raw( const std::string &file_name, cuda::Extent const &dim )
+	static Volume from_raw( const std::string &file_name, cuda::Extent const &block_dim )
 	{
-		Volume vol( std::ifstream( file_name, std::ios::in | std::ios::binary ), dim );
-		vol.cnt = 1;
-		return std::move( vol );
+		return Volume(
+		  std::ifstream( file_name, std::ios::in | std::ios::binary ),
+		  block_dim );
 	}
 
-	VolumeBlock<Voxel> get_block( std::size_t idx )
+	VolumeBlock<Voxel> get_block( uint3 idx )
 	{
 		std::string buffer;
-		auto block_size = sizeof( Voxel ) * dim.size();
+		auto block_size = sizeof( Voxel ) * block_dim.size();
 		buffer.resize( block_size );
 		auto buffer_ptr = const_cast<char *>( buffer.c_str() );
-		auto nread = _.seekg( offset + idx * block_size )
+		auto block_id = idx.x +
+						idx.y * grid_dim.x +
+						idx.z * grid_dim.x * grid_dim.y;
+		auto nread = _.seekg( offset + block_id * block_size )
 					   .read( buffer_ptr, block_size )
 					   .gcount();
 		if ( nread != block_size ) {
 			throw std::runtime_error( "failed to read block" );
 		}
-		return VolumeBlock<Voxel>( std::move( buffer ), dim );
+		return VolumeBlock<Voxel>( std::move( buffer ), block_dim );
 	}
 
-	std::size_t block_count() const { return cnt; }
+	dim3 dim() const { return grid_dim; }
 
 private:
-	Volume( std::ifstream &&_, cuda::Extent const &dim ) :
+	Volume( std::ifstream &&_, cuda::Extent const &block_dim ) :
 	  _( std::move( _ ) ),
-	  dim( dim ) {}
+	  block_dim( block_dim ) {}
 
 private:
 	std::ifstream _;
-	std::size_t cnt;
 	std::size_t offset = 0;
-	cuda::Extent dim;
+	cuda::Extent block_dim;
+	dim3 grid_dim = dim3( 1, 1, 1 );
 };
 
 }  // namespace vol
