@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stream.hpp"
+#include "device_id.hpp"
 #include <utils/attribute.hpp>
 
 namespace vol
@@ -9,6 +10,7 @@ namespace cuda
 {
 struct KernelLaunchInfo
 {
+	VOL_DEFINE_ATTRIBUTE( DeviceId, device ) = DeviceId{ 0 };
 	VOL_DEFINE_ATTRIBUTE( dim3, grid_dim );
 	VOL_DEFINE_ATTRIBUTE( dim3, block_dim );
 	VOL_DEFINE_ATTRIBUTE( std::size_t, shm_per_block );
@@ -64,6 +66,7 @@ struct Functionlify<Ret ( *const )( Args... )> : Functionlify<Ret( Args... )>
   struct __Kernel_Impl_##impl<Ret(Args...)> {                                  \
     static void launch(vol::cuda::KernelLaunchInfo const &info, Args... args,  \
                        cudaStream_t stream) {                                  \
+      auto lock = info.device.lock();                                          \
       impl<<<info.grid_dim, info.block_dim, info.shm_per_block, stream>>>      \
           (args...);                                                           \
     }                                                                          \

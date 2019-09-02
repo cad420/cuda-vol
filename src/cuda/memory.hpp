@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stream.hpp"
+#include "device_id.hpp"
 #include "misc.hpp"
 
 #include <utils/attribute.hpp>
@@ -11,12 +12,6 @@ namespace cuda
 {
 struct GlobalMemory;
 
-enum class MemoryLocation : int
-{
-	Host,
-	Device
-};
-
 namespace _
 {
 template <typename T, std::size_t N>
@@ -25,14 +20,11 @@ struct MemoryViewND
 	__host__ __device__ T *data() const { return reinterpret_cast<T *>( _.ptr ); }
 	__host__ __device__ explicit operator bool() const { return _.ptr; }
 	cudaPitchedPtr get() const { return _; }
-	MemoryLocation location() const
-	{
-		return is_device ? MemoryLocation::Device : MemoryLocation::Host;
-	}
+	DeviceId device_id() const { return device; }
 
 protected:
 	cudaPitchedPtr _ = { 0 };
-	bool is_device = false;
+	DeviceId device = DeviceId{ -1 };
 	friend struct cuda::GlobalMemory;
 };
 }  // namespace _
@@ -118,10 +110,16 @@ private:
 
 		char *_;
 		std::size_t size;
+		DeviceId device;
 	};
 
 public:
-	GlobalMemory( std::size_t size ) { cudaMalloc( &_->_, _->size = size ); }
+	GlobalMemory( std::size_t size, DeviceId const &device = DeviceId{} )
+	{
+		auto lock = device.lock();
+		cudaMalloc( &_->_, _->size = size );
+		_->device = device;
+	}
 
 	std::size_t size() const { return _->size; }
 
@@ -130,7 +128,7 @@ public:
 	MemoryViewND<T, 2> view_2d( MemoryView2DInfo const &info, std::size_t offset = 0 ) const
 	{
 		auto mem = MemoryViewND<T, 2>( _->_ + offset, info );
-		static_cast<_::MemoryViewND<T, 2> &>( mem ).is_device = true;
+		static_cast<_::MemoryViewND<T, 2> &>( mem ).device = _->device;
 		return mem;
 	}
 

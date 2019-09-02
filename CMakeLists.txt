@@ -42,7 +42,11 @@ if (VOL_BUILD_RENDERER)
 	${SOURCES}
   )
 
-  target_link_libraries(vol pthread)
+  if (CMAKE_CXX_COMPILER MATCHES MSVC)
+
+  else()
+    target_link_libraries(vol pthread)
+  endif()
 
 endif()
 

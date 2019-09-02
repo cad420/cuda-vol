@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stream.hpp"
+#include "device_id.hpp"
 #include "misc.hpp"
 
 namespace vol
@@ -18,10 +19,12 @@ private:
 		~Inner() { cudaFreeArray( _ ); }
 
 		cudaArray_t _;
+		DeviceId device;
 	};
 
 public:
 	cudaArray_t get() const { return _->_; }
+	DeviceId device_id() const { return _->device; }
 #ifdef __CUDACC__
 	template <cudaTextureReadMode Mode>
 	void bind_to_texture( texture<E, N, Mode> const &tex ) const
@@ -43,11 +46,13 @@ struct ArrayND;
 template <typename E>
 struct ArrayND<E, 1> : _::Array<E, 1>
 {
-	ArrayND( std::size_t len ) :
+	ArrayND( std::size_t len, DeviceId const &device = DeviceId{} ) :
 	  w( len )
 	{
+		auto lock = device.lock();
 		auto desc = cudaCreateChannelDesc<E>();
 		cudaMallocArray( &this->_->_, &desc, w, 1 );
+		this->_->device = device;
 	}
 
 	std::size_t size() const { return w; }
@@ -59,12 +64,14 @@ private:
 template <typename E>
 struct ArrayND<E, 2> : _::Array<E, 2>
 {
-	ArrayND( std::size_t w, std::size_t h ) :
+	ArrayND( std::size_t w, std::size_t h, DeviceId const &device = DeviceId{} ) :
 	  w( w ),
 	  h( h )
 	{
+		auto lock = device.lock();
 		auto desc = cudaCreateChannelDesc<E>();
 		cudaMallocArray( &this->_->_, &desc, w, h );
+		this->_->device = device;
 	}
 
 	std::size_t width() const { return w; }
@@ -77,11 +84,13 @@ private:
 template <typename E>
 struct ArrayND<E, 3> : _::Array<E, 3>
 {
-	ArrayND( Extent const &extent ) :
+	ArrayND( Extent const &extent, DeviceId const &device = DeviceId{} ) :
 	  dim( extent )
 	{
+		auto lock = device.lock();
 		auto desc = cudaCreateChannelDesc<E>();
 		cudaMalloc3DArray( &this->_->_, &desc, dim.get() );
+		this->_->device = device;
 	}
 
 	Extent extent() const { return dim; }

@@ -13,14 +13,14 @@ namespace cuda
 {
 struct Rect
 {
-	VOL_DEFINE_ATTRIBUTE( uint, x0 ) = 0;
-	VOL_DEFINE_ATTRIBUTE( uint, y0 ) = 0;
-	VOL_DEFINE_ATTRIBUTE( uint, x1 ) = 0;
-	VOL_DEFINE_ATTRIBUTE( uint, y1 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( std::size_t, x0 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( std::size_t, y0 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( std::size_t, x1 ) = 0;
+	VOL_DEFINE_ATTRIBUTE( std::size_t, y1 ) = 0;
 
 public:
-	uint width() const { return x1 - x0; }
-	uint height() const { return y1 - y0; }
+	std::size_t width() const { return x1 - x0; }
+	std::size_t height() const { return y1 - y0; }
 };
 
 template <typename Pixel>
@@ -29,16 +29,16 @@ struct Image;
 template <typename Pixel = uchar4>
 struct ImageView final
 {
-	__host__ Pixel &at_host( uint x, uint y ) const { return host_mem.at( x, y ); }
-	__device__ Pixel &at_device( uint x, uint y ) const { return device_mem.at( x, y ); }
-	__host__ __device__ uint width() const { return host_mem.width(); }
-	__host__ __device__ uint height() const { return host_mem.height(); }
+	__host__ Pixel &at_host( std::size_t x, std::size_t y ) const { return host_mem.at( x, y ); }
+	__device__ Pixel &at_device( std::size_t x, std::size_t y ) const { return device_mem.at( x, y ); }
+	__host__ __device__ std::size_t width() const { return host_mem.width(); }
+	__host__ __device__ std::size_t height() const { return host_mem.height(); }
 
 public:
 	ImageView with_device_memory( MemoryView2D<Pixel> const &memory ) const
 	{
 		auto _ = *this;
-		if ( memory.location() != MemoryLocation::Device ) {
+		if ( memory.device_id().is_host() ) {
 			throw std::runtime_error( "invalid device memory view" );
 		}
 		_.device_mem = memory;
@@ -111,17 +111,6 @@ public:
 	ImageView<Pixel> view() const
 	{
 		return view( Rect{}.set_x0( 0 ).set_y0( 0 ).set_x1( width ).set_y1( height ) );
-	}
-
-	std::pair<GlobalMemory, MemoryView2D<Pixel>> create_device_buffer() const
-	{
-		cuda::GlobalMemory mem( width * height * sizeof( Pixel ) );
-		auto view_info = cuda::MemoryView2DInfo{}
-						   .set_stride( width * sizeof( Pixel ) )
-						   .set_width( width )
-						   .set_height( height );
-		auto view = mem.view_2d<Pixel>( view_info );
-		return std::make_pair( mem, view );
 	}
 
 	void dump( std::string const &file_name ) const
