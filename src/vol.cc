@@ -53,20 +53,11 @@ int main( int argc, char **argv )
 	// 				   .set_depth( opts[ "z" ].as<unsigned>() );
 	auto volume = Volume<Voxel>::from_lvd( in );
 	auto grid_dim = volume.dim();
-	cout << "volume grid dim: "
-		 << grid_dim.x << ","
-		 << grid_dim.y << ","
-		 << grid_dim.z << endl;
+	cout << "volume grid dim: " << grid_dim << endl;
 	auto block_dim = volume.block_dim();
-	cout << "volume block dim: "
-		 << block_dim.width << ","
-		 << block_dim.height << ","
-		 << block_dim.depth << endl;
+	cout << "volume block dim: " << block_dim << endl;
 	auto padding = volume.padding();
-	cout << "volume block padding: "
-		 << padding.x << ","
-		 << padding.y << ","
-		 << padding.z << endl;
+	cout << "volume block padding: " << padding << endl;
 	auto padding_f = float3{ float( padding.x ),
 							 float( padding.y ),
 							 float( padding.z ) };
@@ -104,10 +95,7 @@ int main( int argc, char **argv )
 	int curr_swap = 0;
 	tasks.wait();
 	for ( auto &arch : blocks ) {
-		cout << "rendering block: "
-			 << arch.index().x << ","
-			 << arch.index().y << ","
-			 << arch.index().z << endl;
+		cout << "rendering block: " << arch.index() << endl;
 		block[ curr_swap ] = std::make_shared<VolumeBlock<Voxel>>( arch.unarchieve() );
 		cuda::memory_transfer( block_arr[ curr_swap ], block[ curr_swap ]->view() )
 		  .launch_async( swap[ curr_swap ] );
