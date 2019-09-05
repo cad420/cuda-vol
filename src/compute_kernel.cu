@@ -88,8 +88,7 @@ static int __ = [] {
 	static cuda::Array1D<float4>
 	  transfer_arr( sizeof( transfer_fn ) / sizeof( transfer_fn[ 0 ] ) );
 	auto transfer_fn_view = cuda::MemoryView1D<float4>( transfer_fn, transfer_arr.size() );
-	auto res = cuda::memory_transfer( transfer_arr, transfer_fn_view ).launch();
-	std::cout << res << std::endl;
+	cuda::memory_transfer( transfer_arr, transfer_fn_view ).launch().unwrap();
 	transfer_arr.bind_to_texture( transfer_tex );
 
 	return 0;

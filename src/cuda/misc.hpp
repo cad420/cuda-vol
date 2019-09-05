@@ -22,10 +22,10 @@ public:
 
 }  // namespace cuda
 
-#define VOL_CUDA_DEFINE_VECTOR1234_FMT( T )     \
-    VOL_DEFINE_VECTOR1_FMT( T##1, x )           \
-	VOL_DEFINE_VECTOR2_FMT( T##2, x, y )        \
-	VOL_DEFINE_VECTOR3_FMT( T##3, x, y, z )     \
+#define VOL_CUDA_DEFINE_VECTOR1234_FMT( T ) \
+	VOL_DEFINE_VECTOR1_FMT( T##1, x )       \
+	VOL_DEFINE_VECTOR2_FMT( T##2, x, y )    \
+	VOL_DEFINE_VECTOR3_FMT( T##3, x, y, z ) \
 	VOL_DEFINE_VECTOR4_FMT( T##4, x, y, z, w )
 
 VOL_CUDA_DEFINE_VECTOR1234_FMT( char )
@@ -41,5 +41,7 @@ VOL_CUDA_DEFINE_VECTOR1234_FMT( ulonglong )
 VOL_CUDA_DEFINE_VECTOR1234_FMT( float )
 VOL_CUDA_DEFINE_VECTOR1234_FMT( double )
 VOL_DEFINE_VECTOR3_FMT( dim3, x, y, z )
+VOL_DEFINE_VECTOR3_FMT( cuda::Extent, width, height, depth )
+VOL_DEFINE_VECTOR3_FMT( cudaExtent, width, height, depth )
 
 }  // namespace vol

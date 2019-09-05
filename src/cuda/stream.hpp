@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <functional>
+#include <chrono>
 #include <cuda_runtime.h>
 
 #include <utils/concepts.hpp>
@@ -43,6 +44,36 @@ inline Poll from_cuda_poll_result( cudaError_t ret )
 	}
 }
 
+struct Result
+{
+	Result( cudaError_t _ = cudaSuccess ) :
+	  _( _ ) {}
+
+	bool ok() const { return _ == cudaSuccess; }
+	bool err() const { return !ok(); }
+	explicit operator bool() const { return ok(); }
+	const char *message() const { return cudaGetErrorString( _ ); }
+	void unwrap() const
+	{
+		if ( err() ) {
+			std::cerr << "Result unwrap failed: " << message() << std::endl;
+			std::abort();
+		}
+	}
+
+private:
+	cudaError_t _;
+};
+
+inline std::ostream &operator<<( std::ostream &os, Result stat )
+{
+	if ( stat.ok() ) {
+		return os << "Ok";
+	} else {
+		return os << "Err: " << stat.message();
+	}
+}
+
 struct Event
 {
 private:
@@ -63,7 +94,15 @@ public:
 
 	void record() const { cudaEventRecord( _->_ ); }
 	Poll poll() const { return from_cuda_poll_result( cudaEventQuery( _->_ ) ); }
-	bool wait() const { return cudaEventSynchronize( _->_ ) == cudaSuccess; }
+	Result wait() const { return cudaEventSynchronize( _->_ ); }
+
+public:
+	static std::chrono::microseconds elapsed( Event const &a, Event const &b )
+	{
+		float dt;
+		cudaEventElapsedTime( &dt, a._->_, b._->_ );
+		return std::chrono::microseconds( uint64_t( dt * 1000 ) );
+	}
 
 private:
 	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
@@ -105,7 +144,7 @@ public:
 	Stream() { cudaStreamCreate( &_->_ ); }
 
 	Poll poll() const { return from_cuda_poll_result( cudaStreamQuery( _->_ ) ); }
-	bool wait() const { return cudaStreamSynchronize( _->_ ) == cudaSuccess; }
+	Result wait() const { return cudaStreamSynchronize( _->_ ); }
 	Lock lock() const { return Lock( *_ ); }
 
 public:
@@ -115,21 +154,6 @@ private:
 	std::shared_ptr<Inner> _ = std::make_shared<Inner>();
 };
 
-enum class Result : uint32_t
-{
-	Ok = 0,
-	Err = 1,
-};
-
-inline std::ostream &operator<<( std::ostream &os, Result stat )
-{
-	switch ( stat ) {
-	case Result::Ok: return os << "Ok";
-	case Result::Err: return os << "Err";
-	default: throw std::runtime_error( "invalid internal state: Result" );
-	}
-}
-
 struct Task : NoCopy
 {
 	Task() = default;
@@ -138,21 +162,14 @@ struct Task : NoCopy
 
 	std::future<Result> launch_async( Stream const &stream = Stream() ) &&
 	{
-		Event event;
+		Event start, stop;
 		{
 			auto lock = stream.lock();
-			for ( auto &e : _ ) {
-				e( lock.get() );
-			}
-			event.record();
+			start.record();
+			for ( auto &e : _ ) e( lock.get() );
+			stop.record();
 		}
-		return std::async( std::launch::deferred, [=]() -> Result {
-			if ( event.wait() ) {
-				return Result::Ok;
-			} else {
-				return Result::Err;
-			}
-		} );
+		return std::async( std::launch::deferred, [=] { return stop.wait(); } );
 	}
 	Result launch( Stream const &stream = Stream() ) &&
 	{
@@ -162,9 +179,7 @@ struct Task : NoCopy
 	}
 	Task &chain( Task &&other )
 	{
-		for ( auto &e : other._ ) {
-			_.emplace_back( std::move( e ) );
-		}
+		for ( auto &e : other._ ) _.emplace_back( std::move( e ) );
 		return *this;
 	}
 

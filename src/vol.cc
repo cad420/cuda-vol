@@ -106,13 +106,13 @@ int main( int argc, char **argv )
 					 .set_min( ( idx - bump ) / grid_dim_max * 2.f - 1.f )
 					 .set_max( ( idx + 1.f + bump ) / grid_dim_max * 2.f - 1.f );
 		cout << box << endl;
-		swap[ 1 - curr_swap ].wait();
+		swap[ 1 - curr_swap ].wait().unwrap();
 		bind_texture( block_arr[ curr_swap ] );
 		render_kernel( launch_info, view, camera, box, inner_scale ).launch_async( swap[ curr_swap ] );
 		curr_swap = 1 - curr_swap;
 	}
-	swap[ 0 ].wait();
-	swap[ 1 ].wait();
+	swap[ 0 ].wait().unwrap();
+	swap[ 1 ].wait().unwrap();
 
 	cout << "render finished" << endl;
 
