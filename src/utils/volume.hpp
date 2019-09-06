@@ -156,8 +156,8 @@ struct Volume
 							 header.height / len,
 							 header.depth / len );
 		vol.all = vol.grid_dim * ( len - vol._->padding * 2 );
-		vol.raw_all = dim3{ header.original_width, 
-							header.original_height, 
+		vol.raw_all = dim3{ header.original_width,
+							header.original_height,
 							header.original_depth };
 		return vol;
 	}

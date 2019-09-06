@@ -4,14 +4,77 @@
 
 namespace vol
 {
+
 texture<Voxel, 3, cudaReadModeNormalizedFloat> tex;
 texture<float4, 1, cudaReadModeElementType> transfer_tex;
 
-__global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
-									Camera camera,
-									Box3D box, 
-									float3 inner_scale,
-									float3 block_index )
+template <std::size_t N>
+__device__ float2 msaa_sample( int idx );
+
+#define MS_SAMPLE( x, y ) { float( x / 10.f / .8f ), float( y / 10.f / .8f ) }
+
+template <>
+__device__ float2 msaa_sample<1>( int )
+{
+	return float2{ 0, 0 };
+}
+
+template <>
+__device__ float2 msaa_sample<2>( int i )
+{
+	static float2 _[] = { MS_SAMPLE( 4, 4 ),
+	                      MS_SAMPLE( -4, -4 ) };
+	return _[ i ];
+}
+
+template <>
+__device__ float2 msaa_sample<4>( int i )
+{
+	static float2 _[] = { MS_SAMPLE( -2, -6 ),
+	                      MS_SAMPLE( 6, -2 ),
+	                      MS_SAMPLE( -6, 2 ),
+	                      MS_SAMPLE( 2, 6 ) };
+	return _[ i ];
+}
+
+template <>
+__device__ float2 msaa_sample<8>( int i )
+{
+	static float2 _[] = { MS_SAMPLE( 1, -3 ),
+	                      MS_SAMPLE( -1, 3 ),
+	                      MS_SAMPLE( 5, 1 ),
+	                      MS_SAMPLE( -3, -5 ),
+	                      MS_SAMPLE( -5, 5 ),
+	                      MS_SAMPLE( -7, -1 ),
+	                      MS_SAMPLE( 3, 7 ),
+	                      MS_SAMPLE( 7, -7 ) };
+	return _[ i ];
+}
+
+template <>
+__device__ float2 msaa_sample<16>( int i )
+{
+	static float2 _[] = { MS_SAMPLE( 1, 1 ),
+	                      MS_SAMPLE( -1, -3 ),
+	                      MS_SAMPLE( -3, 2 ),
+	                      MS_SAMPLE( 4, -1 ),
+	                      MS_SAMPLE( -5, -2 ),
+	                      MS_SAMPLE( 2, 5 ),
+	                      MS_SAMPLE( 5, 3 ),
+	                      MS_SAMPLE( 3, -5 ),
+	                      MS_SAMPLE( -2, 6 ),
+	                      MS_SAMPLE( 0, -7 ),
+	                      MS_SAMPLE( -4, -6 ),
+	                      MS_SAMPLE( -6, 4 ),
+	                      MS_SAMPLE( -8, 0 ),
+	                      MS_SAMPLE( 7, -4 ),
+	                      MS_SAMPLE( 6, 7 ),
+	                      MS_SAMPLE( -7, -8 ) };
+	return _[ i ];
+}
+
+template <std::size_t N>
+__global__ void render_kernel_impl( cuda::ImageView<Pixel<N>> out, RenderOptions opts )
 {
 	const int max_steps = 500;
 	const float tstep = 0.01f;
@@ -25,50 +88,61 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
 		return;
 	}
 
-	float u = x / float( out.width() ) * 2.f - 1.f;
-	float v = y / float( out.height() ) * 2.f - 1.f;
+	float invw = 1.f / float( out.width() );
+	float invh = 1.f / float( out.height() );
 
-	auto eye = Ray3D{};
-	eye.o = camera.p;
-	eye.d = normalize( camera.d + camera.u * u + camera.v * v );
+	float u = x * invw * 2.f - 1.f;
+	float v = y * invh * 2.f - 1.f;
 
-	float tnear, tfar;
-	if ( !eye.intersect( box, tnear, tfar ) ) {
-		return;
+	for ( int i = 0; i != N; ++i ) {
+
+		auto msaa = msaa_sample<N>( i );
+
+		auto eye = Ray3D{};
+		eye.o = opts.camera.p;
+		eye.d = normalize( opts.camera.d + 
+						   opts.camera.u * ( u + msaa.x * invw ) + 
+						   opts.camera.v * ( v + msaa.y * invh ) );
+
+		float tnear, tfar;
+		if ( !eye.intersect( opts.box, tnear, tfar ) ) {
+			return;
+		}
+
+		auto &sample = out.at_device( x, y )._[ i ];
+		auto sum = sample.v;
+
+		auto t = fmaxf( tnear, sample.t );
+		auto x0 = eye.o + eye.d * t;
+		auto x1 = opts.box.center() + ( x0 - opts.box.center() ) * opts.inner_scale;
+		auto box_scale = 1.f / ( opts.box.max - opts.box.min );
+		auto pos = ( x1 - opts.box.min ) * box_scale;
+		// auto p = pos;
+		auto step = eye.d * tstep * box_scale * opts.inner_scale;
+
+		for ( int i = 0; i < max_steps; ++i ) {
+			float sample = tex3D( tex, pos.x, pos.y, pos.z );
+			float4 col = tex1D( transfer_tex, sample ) * density;
+			sum += col * ( 1.f - sum.w );
+			if ( sum.w > opacity_threshold ) break;
+			t += tstep;
+			if ( t > tfar ) break;
+			pos += step;
+		}
+
+		sample.v = sum;
+		sample.t = fmaxf( t, tfar );
+
 	}
-
-	auto &pixel = out.at_device( x, y );
-	auto sum = pixel._;
-
-	// if ( tnear <= pixel.t ) return;
-
-	auto t = fmaxf( tnear, pixel.t );
-	auto x0 = eye.o + eye.d * t;
-	auto x1 = box.center() + ( x0 - box.center() ) * inner_scale;
-	auto box_scale = 1.f / ( box.max - box.min );
-	auto pos = ( x1 - box.min ) * box_scale;
-	// auto p = pos;
-	auto step = eye.d * tstep * box_scale * inner_scale;
-
-	for ( int i = 0; i < max_steps; ++i ) {
-		float sample = tex3D( tex, pos.x, pos.y, pos.z );
-		float4 col = tex1D( transfer_tex, sample ) * density;
-		sum += col * ( 1.f - sum.w );
-		if ( sum.w > opacity_threshold ) break;
-		t += tstep;
-		if ( t > tfar ) break;
-		pos += step;
-	}
-
-	pixel._ = sum;
 	// pixel._ = float4{block_index.x, block_index.y, block_index.z, 0.f} * .5 + .5;
 	// pixel._ = float4{t, t, t, 0.f} - 5.f;
-	pixel.t = fmaxf( t, tfar );
-	// out.at_device( x, y )._ = { float( i ) / 2 / max_steps + .5, 0, 0, 1 };
-	// out.at_device( x, y )._ = { p.x, p.y, p.z, 1 };
 }
 
-VOL_DEFINE_CUDA_KERNEL( render_kernel, render_kernel_impl );
+VOL_DEFINE_CUDA_KERNEL( render_kernel, render_kernel_impl<1> );
+VOL_DEFINE_CUDA_KERNEL( render_kernel_2x, render_kernel_impl<2> );
+VOL_DEFINE_CUDA_KERNEL( render_kernel_4x, render_kernel_impl<4> );
+VOL_DEFINE_CUDA_KERNEL( render_kernel_8x, render_kernel_impl<8> );
+VOL_DEFINE_CUDA_KERNEL( render_kernel_16x, render_kernel_impl<16> );
 
 namespace _
 {

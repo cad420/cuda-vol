@@ -61,9 +61,9 @@ struct Functionlify<Ret ( *const )( Args... )> : Functionlify<Ret( Args... )>
 #define VOL_DEFINE_CUDA_KERNEL(name, impl)                                     \
   namespace {                                                                  \
   template <typename F>                                                        \
-  struct __Kernel_Impl_##impl;                                                 \
+  struct __Kernel_Impl_##name;                                                 \
   template <typename Ret, typename... Args>                                    \
-  struct __Kernel_Impl_##impl<Ret(Args...)> {                                  \
+  struct __Kernel_Impl_##name<Ret(Args...)> {                                  \
     static void launch(vol::cuda::KernelLaunchInfo const &info, Args... args,  \
                        cudaStream_t stream) {                                  \
       auto lock = info.device.lock();                                          \
@@ -74,7 +74,7 @@ struct Functionlify<Ret ( *const )( Args... )> : Functionlify<Ret( Args... )>
   }                                                                            \
   ::vol::cuda::Kernel<                                                         \
       typename ::vol::cuda::Functionlify<decltype(impl)>::type>                \
-  name(__Kernel_Impl_##impl<                                                   \
+  name(__Kernel_Impl_##name<                                                   \
       typename ::vol::cuda::Functionlify<decltype(impl)>::type>::launch)
 /* clang-format on */
 
