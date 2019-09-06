@@ -124,6 +124,7 @@ struct Volume
 		  std::ifstream( file_name, std::ios::in | std::ios::binary ),
 		  block_dim );
 		vol.block_stride = vol._->block_size;
+		vol.raw_all = vol.all = block_dim;
 		return vol;
 	}
 	// fake implementation read one raw file ant make a 2x2x2 grid
@@ -153,7 +154,11 @@ struct Volume
 		vol.block_stride = vol._->block_size;
 		vol.grid_dim = dim3( header.width / len,
 							 header.height / len,
-							 header.height / len );
+							 header.depth / len );
+		vol.all = vol.grid_dim * ( len - vol._->padding * 2 );
+		vol.raw_all = dim3{ header.original_width, 
+							header.original_height, 
+							header.original_depth };
 		return vol;
 	}
 
@@ -190,6 +195,12 @@ public:
 	{
 		return get_blocks( uint3{ 0, 0, 0 }, uint3{ grid_dim.x, grid_dim.y, grid_dim.z } );
 	}
+	float scale() const
+	{
+		return std::min( std::min( float( all.x ) / raw_all.x,
+								   float( all.y ) / raw_all.y ),
+						 float( all.z ) / raw_all.z );
+	}
 
 private:
 	std::shared_ptr<_::VolumeInner<Voxel>> _;
@@ -197,6 +208,7 @@ private:
 	std::size_t offset = 0;
 	std::size_t block_stride = 0;
 	std::size_t block_offset = 0;
+	dim3 all, raw_all;
 };
 
 }  // namespace vol

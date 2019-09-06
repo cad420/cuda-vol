@@ -13,13 +13,14 @@ struct Pixel
 	void write_to( unsigned char dst[ 4 ] )
 	{
 		float4 v = clamp( _, float4{ 0, 0, 0, 0 }, float4{ 1, 1, 1, 1 } );
-		dst[ 0 ] = (unsigned char)( _.x * 255 );
-		dst[ 1 ] = (unsigned char)( _.y * 255 );
-		dst[ 2 ] = (unsigned char)( _.z * 255 );
+		dst[ 0 ] = (unsigned char)( clamp( _.x * 255, 0.f, 255.f ) );
+		dst[ 1 ] = (unsigned char)( clamp( _.y * 255, 0.f, 255.f ) );
+		dst[ 2 ] = (unsigned char)( clamp( _.z * 255, 0.f, 255.f ) );
 		dst[ 3 ] = (unsigned char)( 255 );
 	}
 
 	float4 _;
+	float t = 0;
 };
 
 struct Camera
@@ -56,7 +57,8 @@ using Voxel = unsigned char;
 extern cuda::Kernel<void( cuda::ImageView<Pixel> view,
 						  Camera camera,
 						  Box3D box,
-						  float3 inner_scale )>
+						  float3 inner_scale,
+						  float3 block_index )>
   render_kernel;
 extern void bind_texture( cuda::Array3D<Voxel> const &arr );
 

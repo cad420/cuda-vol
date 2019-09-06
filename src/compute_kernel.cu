@@ -9,7 +9,9 @@ texture<float4, 1, cudaReadModeElementType> transfer_tex;
 
 __global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
 									Camera camera,
-									Box3D box, float3 inner_scale )
+									Box3D box, 
+									float3 inner_scale,
+									float3 block_index )
 {
 	const int max_steps = 500;
 	const float tstep = 0.01f;
@@ -35,15 +37,18 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
 		return;
 	}
 
-	auto t = tnear;
+	auto &pixel = out.at_device( x, y );
+	auto sum = pixel._;
+
+	// if ( tnear <= pixel.t ) return;
+
+	auto t = fmaxf( tnear, pixel.t );
 	auto x0 = eye.o + eye.d * t;
 	auto x1 = box.center() + ( x0 - box.center() ) * inner_scale;
 	auto box_scale = 1.f / ( box.max - box.min );
 	auto pos = ( x1 - box.min ) * box_scale;
 	// auto p = pos;
 	auto step = eye.d * tstep * box_scale * inner_scale;
-
-	auto sum = out.at_device( x, y )._;
 
 	for ( int i = 0; i < max_steps; ++i ) {
 		float sample = tex3D( tex, pos.x, pos.y, pos.z );
@@ -55,7 +60,10 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
 		pos += step;
 	}
 
-	out.at_device( x, y )._ = sum;
+	pixel._ = sum;
+	// pixel._ = float4{block_index.x, block_index.y, block_index.z, 0.f} * .5 + .5;
+	// pixel._ = float4{t, t, t, 0.f} - 5.f;
+	pixel.t = fmaxf( t, tfar );
 	// out.at_device( x, y )._ = { float( i ) / 2 / max_steps + .5, 0, 0, 1 };
 	// out.at_device( x, y )._ = { p.x, p.y, p.z, 1 };
 }

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <limits>
 #include <cuda_runtime.h>
 #include <nv/helper_math.h>
+
 #include "attribute.hpp"
 
 namespace vol
@@ -38,10 +40,18 @@ public:
 		float3 tmin = fminf( ttop, tbot );
 		float3 tmax = fmaxf( ttop, tbot );
 
+		// if ( isinf( tmin.x ) ) tmin.x = -std::numeric_limits<float>::infinity();
+		// if ( isinf( tmin.y ) ) tmin.y = -std::numeric_limits<float>::infinity();
+		// if ( isinf( tmin.z ) ) tmin.z = -std::numeric_limits<float>::infinity();
+
+		// if ( isinf( tmax.x ) ) tmax.x = std::numeric_limits<float>::infinity();
+		// if ( isinf( tmax.y ) ) tmax.y = std::numeric_limits<float>::infinity();
+		// if ( isinf( tmax.z ) ) tmax.z = std::numeric_limits<float>::infinity();
+
 		tnear = fmaxf( fmaxf( tmin.x, tmin.y ), tmin.z );
 		tfar = fminf( fminf( tmax.x, tmax.y ), tmax.z );
 
 		return tfar > tnear;
 	}
 };
-}
+}  // namespace vol

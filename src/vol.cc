@@ -23,9 +23,9 @@ int main( int argc, char **argv )
 	  "h,help", "show this help message" )(
 	  "d,dim", "output image dim", cxxopts::value<unsigned>()->default_value( "2048" ) )(
 	  "o,output", "place the output image into <file>", cxxopts::value<string>()->default_value( "a.png" ) )(
-	  "x", "block_dim.x", cxxopts::value<unsigned>() )(
-	  "y", "block_dim.y", cxxopts::value<unsigned>() )(
-	  "z", "block_dim.z", cxxopts::value<unsigned>() );
+      "x", "x", cxxopts::value<float>()->default_value( "0" ) )(
+	  "y", "y", cxxopts::value<float>()->default_value( "1" ) )(
+	  "z", "z", cxxopts::value<float>()->default_value( "2" ) );
 
 	auto opts = options.parse( argc, argv );
 	if ( opts.count( "h" ) ) {
@@ -36,7 +36,13 @@ int main( int argc, char **argv )
 	auto out = opts[ "o" ].as<string>();
 	auto img_size = opts[ "d" ].as<unsigned>();
 
-	auto camera = Camera::Builder{}.build();
+	auto center = float3{ opts[ "x" ].as<float>(),
+					      opts[ "y" ].as<float>(),
+						  opts[ "z" ].as<float>() };
+
+	auto camera = Camera::Builder{}
+	.set_pos(center)
+	.build();
 	cuda::PendingTasks tasks;
 
 	auto devices = cuda::Device::scan();
@@ -47,13 +53,12 @@ int main( int argc, char **argv )
 	auto view = image.view().with_device_memory( device_swap.second );
 	tasks.add( view.copy_to_device().launch_async() );
 
-	// auto block_dim = cuda::Extent{}
-	// 				   .set_width( opts[ "x" ].as<unsigned>() )
-	// 				   .set_height( opts[ "y" ].as<unsigned>() )
-	// 				   .set_depth( opts[ "z" ].as<unsigned>() );
 	auto volume = Volume<Voxel>::from_lvd( in );
 	auto grid_dim = volume.dim();
 	cout << "volume grid dim: " << grid_dim << endl;
+	float grid_dim_max = float( max( grid_dim.x, max( grid_dim.y, grid_dim.z ) ) );
+	auto scale = volume.scale();
+	cout << "volume scale: " << scale << endl;
 	auto block_dim = volume.block_dim();
 	cout << "volume block dim: " << block_dim << endl;
 	auto padding = volume.padding();
@@ -64,10 +69,7 @@ int main( int argc, char **argv )
 	auto block_dim_f = float3{ float( block_dim.width ),
 							   float( block_dim.height ),
 							   float( block_dim.depth ) };
-	auto bump_pix = 0.f;
-	auto bump = bump_pix / block_dim_f;
-	auto inner_scale = 1.f - 2.f * ( padding_f + bump_pix ) /
-							   ( block_dim_f + 2 * bump_pix );
+	auto inner_scale = 1.f - 2.f * padding_f / block_dim_f;
 	auto blocks = volume.get_blocks();
 	stable_sort(
 	  blocks.begin(), blocks.end(),
@@ -78,7 +80,9 @@ int main( int argc, char **argv )
 		  auto y = float3{ float( b.index().x ),
 						   float( b.index().y ),
 						   float( b.index().z ) };
-		  return dot( x, camera.d ) < dot( y, camera.d );
+		  auto px = ( x + .5f ) / grid_dim_max * scale * 2.f - 1.f;
+		  auto py = ( y + .5f ) / grid_dim_max * scale * 2.f - 1.f;
+		  return length( px - camera.p ) < length( py - camera.p );
 	  } );
 
 	auto kernel_block_dim = dim3( 32, 32 );
@@ -87,7 +91,6 @@ int main( int argc, char **argv )
 						 .set_grid_dim( round_up_div( view.width(), kernel_block_dim.x ),
 										round_up_div( view.height(), kernel_block_dim.y ) )
 						 .set_block_dim( kernel_block_dim );
-	float grid_dim_max = float( max( grid_dim.x, max( grid_dim.y, grid_dim.z ) ) );
 	cuda::Array3D<Voxel> block_arr[ 2 ] = { device.alloc_arraynd<Voxel, 3>( block_dim ),
 											device.alloc_arraynd<Voxel, 3>( block_dim ) };
 	cuda::Stream swap[ 2 ];
@@ -103,12 +106,13 @@ int main( int argc, char **argv )
 						   float( arch.index().y ),
 						   float( arch.index().z ) };
 		auto box = Box3D{}
-					 .set_min( ( idx - bump ) / grid_dim_max * 2.f - 1.f )
-					 .set_max( ( idx + 1.f + bump ) / grid_dim_max * 2.f - 1.f );
+		           .set_min( idx / grid_dim_max * scale * 2.f - 1.f )
+			       .set_max( ( idx + 1.f ) / grid_dim_max * scale * 2.f - 1.f );
 		cout << box << endl;
 		swap[ 1 - curr_swap ].wait().unwrap();
 		bind_texture( block_arr[ curr_swap ] );
-		render_kernel( launch_info, view, camera, box, inner_scale ).launch_async( swap[ curr_swap ] );
+		render_kernel( launch_info, view, camera, box, inner_scale, idx / grid_dim_max )
+			.launch_async( swap[ curr_swap ] );
 		curr_swap = 1 - curr_swap;
 	}
 	swap[ 0 ].wait().unwrap();
