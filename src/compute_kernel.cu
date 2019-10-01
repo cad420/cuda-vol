@@ -7,7 +7,9 @@ namespace vol
 texture<Voxel, 3, cudaReadModeNormalizedFloat> tex;
 texture<float4, 1, cudaReadModeElementType> transfer_tex;
 
-__global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
+__global__ void render_kernel_impl( cuda::ImageView<Pixel> out,
+									Camera camera,
+									Box3D box, float3 inner_scale )
 {
 	const int max_steps = 500;
 	const float tstep = 0.01f;
@@ -24,13 +26,9 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 	float u = x / float( out.width() ) * 2.f - 1.f;
 	float v = y / float( out.height() ) * 2.f - 1.f;
 
-	auto box = Box3D{};
-	box.min = float3{ -1, -1, -1 };
-	box.max = float3{ 1, 1, 1 };
-
 	auto eye = Ray3D{};
-	eye.o = float3{ 0, 0, 4 };
-	eye.d = float3{ u, v, -2 };
+	eye.o = camera.p;
+	eye.d = normalize( camera.d + camera.u * u + camera.v * v );
 
 	float tnear, tfar;
 	if ( !eye.intersect( box, tnear, tfar ) ) {
@@ -38,16 +36,17 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 	}
 
 	auto t = tnear;
-	auto pos = eye.o + eye.d * t;
-	auto step = eye.d * tstep;
+	auto x0 = eye.o + eye.d * t;
+	auto x1 = box.center() + ( x0 - box.center() ) * inner_scale;
+	auto box_scale = 1.f / ( box.max - box.min );
+	auto pos = ( x1 - box.min ) * box_scale;
+	// auto p = pos;
+	auto step = eye.d * tstep * box_scale * inner_scale;
 
 	auto sum = out.at_device( x, y )._;
 
 	for ( int i = 0; i < max_steps; ++i ) {
-		float sample = tex3D( tex,
-							  pos.x * .5 + .5,
-							  pos.y * .5 + .5,
-							  pos.z * .5 + .5 );
+		float sample = tex3D( tex, pos.x, pos.y, pos.z );
 		float4 col = tex1D( transfer_tex, sample ) * density;
 		sum += col * ( 1.f - sum.w );
 		if ( sum.w > opacity_threshold ) break;
@@ -58,7 +57,6 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel> out )
 
 	out.at_device( x, y )._ = sum;
 	// out.at_device( x, y )._ = { float( i ) / 2 / max_steps + .5, 0, 0, 1 };
-	// auto p = eye.o + eye.d * tnear * .5 + .5;
 	// out.at_device( x, y )._ = { p.x, p.y, p.z, 1 };
 }
 

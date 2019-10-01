@@ -10,7 +10,18 @@ struct Box3D
 {
 	VOL_DEFINE_ATTRIBUTE( float3, min );
 	VOL_DEFINE_ATTRIBUTE( float3, max );
+
+public:
+	__host__ __device__ float3 center() const { return ( min + max ) / 2; }
 };
+
+inline std::ostream &operator<<( std::ostream &os, Box3D const &box )
+{
+	os << "Box3D(("
+	   << box.min.x << "," << box.min.y << "," << box.min.z << "),("
+	   << box.max.x << "," << box.max.y << "," << box.max.z << "))";
+	return os;
+}
 
 struct Ray3D
 {

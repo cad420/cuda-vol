@@ -13,6 +13,7 @@ namespace vol
 {
 namespace _
 {
+template <typename Voxel>
 struct VolumeInner : NoCopy, NoMove
 {
 	VolumeInner( std::ifstream &&_, cuda::Extent const &block_dim ) :
@@ -25,6 +26,7 @@ struct VolumeInner : NoCopy, NoMove
 	std::ifstream _;
 	cuda::Extent block_dim;
 	std::size_t block_size;
+	uint3 padding = uint3{ 0, 0, 0 };
 };
 
 }  // namespace _
@@ -79,7 +81,7 @@ struct ArchievedVolumeBlock
 		std::string buffer;
 		buffer.resize( _->block_size );
 		auto buffer_ptr = const_cast<char *>( buffer.c_str() );
-		auto nread = _->_seekg( offset )
+		auto nread = _->_.seekg( offset )
 					   .read( buffer_ptr, _->block_size )
 					   .gcount();
 		if ( nread != _->block_size ) {
@@ -90,11 +92,27 @@ struct ArchievedVolumeBlock
 	uint3 index() const { return idx; }
 
 private:
-	std::shared_ptr<_::VolumeInner> _;
+	std::shared_ptr<_::VolumeInner<Voxel>> _;
 	std::size_t offset;
 	uint3 idx;
 	friend struct Volume<Voxel>;
 };
+
+namespace lvd
+{
+struct Header
+{
+	uint32_t magic_number;
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+	uint32_t log_block_dim;
+	uint32_t padding;
+	uint32_t original_width;
+	uint32_t original_height;
+	uint32_t original_depth;
+};
+}
 
 template <typename Voxel>
 struct Volume
@@ -102,26 +120,47 @@ struct Volume
 	static Volume from_raw( const std::string &file_name, cuda::Extent const &block_dim )
 	{
 		Volume vol;
-		vol._ = std::make_shared<_::VolumeInner>(
+		vol._ = std::make_shared<_::VolumeInner<Voxel>>(
 		  std::ifstream( file_name, std::ios::in | std::ios::binary ),
 		  block_dim );
-		block_stride = vol._->block_size;
+		vol.block_stride = vol._->block_size;
 		return vol;
 	}
 	// fake implementation read one raw file ant make a 2x2x2 grid
-	static Volume from_lvd( const std::string &file_name, cuda::Extent const &block_dim )
+	static Volume from_lvd( const std::string &file_name )
 	{
 		Volume vol;
-		vol._ = std::make_shared<_::VolumeInner>(
-		  std::ifstream( file_name, std::ios::in | std::ios::binary ),
-		  block_dim );
-		block_stride = 0;
-		grid_dim = dim3( 2, 2, 2 );
+		lvd::Header header;
+		std::ifstream is( file_name, std::ios::in | std::ios::binary );
+		is.read( reinterpret_cast<char *>( &header ), sizeof( header ) );
+		// std::cout << header.width << std::endl
+		// 		  << header.height << std::endl
+		// 		  << header.depth << std::endl
+		// 		  << header.log_block_dim << std::endl
+		// 		  << header.padding << std::endl
+		// 		  << header.original_width << std::endl
+		// 		  << header.original_height << std::endl
+		// 		  << header.original_height << std::endl;
+		auto len = 1 << header.log_block_dim;
+		auto block_dim = cuda::Extent{}
+						   .set_width( len )
+						   .set_height( len )
+						   .set_depth( len );
+		vol._ = std::make_shared<_::VolumeInner<Voxel>>( std::move( is ), block_dim );
+		vol._->padding = uint3{ header.padding, header.padding, header.padding };
+		vol.offset = sizeof( header );
+		// vol.block_stride = 0;
+		vol.block_stride = vol._->block_size;
+		vol.grid_dim = dim3( header.width / len,
+							 header.height / len,
+							 header.height / len );
 		return vol;
 	}
 
 public:
 	dim3 dim() const { return grid_dim; }
+	cuda::Extent block_dim() const { return _->block_dim; }
+	uint3 padding() const { return _->padding; }
 
 	ArchievedVolumeBlock<Voxel> get_block( uint3 idx )
 	{
@@ -130,7 +169,7 @@ public:
 						idx.z * grid_dim.x * grid_dim.y;
 		ArchievedVolumeBlock<Voxel> block;
 		block._ = _;
-		block.offset = offset + block_id * _->block_stride + block_offset;
+		block.offset = offset + block_id * block_stride + block_offset;
 		block.idx = idx;
 		return block;
 	}
@@ -153,7 +192,7 @@ public:
 	}
 
 private:
-	std::shared_ptr<_::VolumeInner> _;
+	std::shared_ptr<_::VolumeInner<Voxel>> _;
 	dim3 grid_dim = dim3( 1, 1, 1 );
 	std::size_t offset = 0;
 	std::size_t block_stride = 0;

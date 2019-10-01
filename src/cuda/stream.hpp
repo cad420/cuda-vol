@@ -172,6 +172,28 @@ private:
 	std::vector<std::function<void( cudaStream_t )>> _;
 };
 
+struct PendingTasks
+{
+	PendingTasks &add( std::future<Result> &&one )
+	{
+		_.emplace_back( std::move( one ) );
+		return *this;
+	}
+	std::vector<Result> wait()
+	{
+		std::vector<Result> ret;
+		for ( auto &e : _ ) {
+			e.wait();
+			ret.emplace_back( e.get() );
+		}
+		_.clear();
+		return ret;
+	}
+
+private:
+	std::vector<std::future<Result>> _;
+};
+
 }  // namespace cuda
 
 }  // namespace vol
