@@ -13,6 +13,15 @@ vm_external_module(
   GIT_REPOSITORY https://github.com/cad420/cuda-fx
   GIT_TAG        master
 )
+cmake_policy(SET CMP0077 NEW)
+set(VOCOMP_BUILD_NVCODEC ON)
+set(VOCOMP_BUILD_REFINER OFF)
+set(VOCOMP_BUILD_EXTRACTOR ON)
+set(VOCOMP_BUILD_TOOLS OFF)
+vm_external_module(
+  GIT_REPOSITORY https://github.com/cad420/voxel-compression
+  GIT_TAG        master
+)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -pg")
@@ -55,6 +64,7 @@ if (VOL_BUILD_RENDERER)
     PROPERTY CUDA_SEPARABLE_COMPILATION ON
   )
   vm_target_dependency(vol cudafx PRIVATE)
+  vm_target_dependency(vol voextract PRIVATE)
 
 endif()
 

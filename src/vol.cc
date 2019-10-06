@@ -59,7 +59,7 @@ int main( int argc, char **argv )
 		auto view = image.view().with_device_memory( device_swap.second );
 		tasks.add( view.copy_to_device().launch_async() );
 
-		auto volume = Volume<Voxel>::from_lvd( in );
+		auto volume = Volume<Voxel>::from_compressed( in );
 		auto grid_dim = volume.dim();
 		cout << "volume grid dim: " << grid_dim << endl;
 		float grid_dim_max = float( max( grid_dim.x, max( grid_dim.y, grid_dim.z ) ) );

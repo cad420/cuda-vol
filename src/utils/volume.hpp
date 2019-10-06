@@ -8,6 +8,8 @@
 #include <cudafx/memory.hpp>
 #include <VMUtils/concepts.hpp>
 #include <VMUtils/modules.hpp>
+#include <vocomp/refine/extractor.hpp>
+#include <vocomp/video/decompressor.hpp>
 
 #include "utils/attribute.hpp"
 
@@ -19,17 +21,24 @@ namespace cuda = cufx;
 template <typename Voxel>
 struct VolumeInner : vm::NoCopy, vm::NoMove
 {
-	VolumeInner( ifstream &&_, cuda::Extent const &block_dim ) :
-	  _( std::move( _ ) ),
-	  block_dim( block_dim ),
+	VolumeInner( ifstream &&is, std::size_t is_len ) :
+	  is( std::move( is ) ),
+	  reader( this->is, 0, is_len ),
+	  _( reader, decomp ),
+	  block_dim( cuda::Extent{}
+				   .set_width( _.block_size() )
+				   .set_height( _.block_size() )
+				   .set_depth( _.block_size() ) ),
 	  block_size( sizeof( Voxel ) * block_dim.size() )
 	{
 	}
 
-	ifstream _;
+	ifstream is;
+	StreamReader reader;
+	vol::video::Decompressor decomp;
+	vol::refine::Extractor _;
 	cuda::Extent block_dim;
 	size_t block_size;
-	uint3 padding = uint3{ 0, 0, 0 };
 };
 
 VM_EXPORT
@@ -84,10 +93,12 @@ VM_EXPORT
 			string buffer;
 			buffer.resize( _->block_size );
 			auto buffer_ptr = const_cast<char *>( buffer.c_str() );
-			auto nread = _->_.seekg( offset )
-						   .read( buffer_ptr, _->block_size )
-						   .gcount();
-			if ( nread != _->block_size ) {
+			SliceWriter writer( buffer_ptr, _->block_size );
+			auto i = voxel::Idx{}
+					   .set_x( idx.x )
+					   .set_y( idx.y )
+					   .set_z( idx.z );
+			if ( !_->_.extract( i, writer ) ) {
 				throw runtime_error( "failed to read block" );
 			}
 			return VolumeBlock<Voxel>( std::move( buffer ), _->block_dim );
@@ -101,74 +112,34 @@ VM_EXPORT
 		friend struct Volume<Voxel>;
 	};
 
-	namespace lvd
-	{
-	struct Header
-	{
-		uint32_t magic_number;
-		uint32_t width;
-		uint32_t height;
-		uint32_t depth;
-		uint32_t log_block_dim;
-		uint32_t padding;
-		uint32_t original_width;
-		uint32_t original_height;
-		uint32_t original_depth;
-	};
-	}  // namespace lvd
-
 	template <typename Voxel>
 	struct Volume
 	{
-		static Volume from_raw( const string &file_name, cuda::Extent const &block_dim )
+		static Volume from_compressed( const string &file_name )
 		{
 			Volume vol;
-			vol._ = make_shared<VolumeInner<Voxel>>(
-			  ifstream( file_name, ios::in | ios::binary ),
-			  block_dim );
+			ifstream is( file_name, ios::binary | ios::ate );
+			auto is_len = is.tellg();
+
+			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), is_len );
+			auto len = vol._->_.block_size();
 			vol.block_stride = vol._->block_size;
-			vol.raw_all = vol.all = block_dim;
-			return vol;
-		}
-		// fake implementation read one raw file ant make a 2x2x2 grid
-		static Volume from_lvd( const string &file_name )
-		{
-			Volume vol;
-			lvd::Header header;
-			ifstream is( file_name, ios::in | ios::binary );
-			is.read( reinterpret_cast<char *>( &header ), sizeof( header ) );
-			// std::cout << header.width << std::endl
-			// 		  << header.height << std::endl
-			// 		  << header.depth << std::endl
-			// 		  << header.log_block_dim << std::endl
-			// 		  << header.padding << std::endl
-			// 		  << header.original_width << std::endl
-			// 		  << header.original_height << std::endl
-			// 		  << header.original_height << std::endl;
-			auto len = 1 << header.log_block_dim;
-			auto block_dim = cuda::Extent{}
-							   .set_width( len )
-							   .set_height( len )
-							   .set_depth( len );
-			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), block_dim );
-			vol._->padding = uint3{ header.padding, header.padding, header.padding };
-			vol.offset = sizeof( header );
-			// vol.block_stride = 0;
-			vol.block_stride = vol._->block_size;
-			vol.grid_dim = dim3( header.width / len,
-								 header.height / len,
-								 header.depth / len );
-			vol.all = vol.grid_dim * ( len - vol._->padding * 2 );
-			vol.raw_all = dim3{ header.original_width,
-								header.original_height,
-								header.original_depth };
+			vol.grid_dim = dim3( unsigned( vol._->_.adjusted().x / len ),
+								 unsigned( vol._->_.adjusted().y / len ),
+								 unsigned( vol._->_.adjusted().z / len ) );
+			vol.all = vol.grid_dim * ( len - vol._->_.padding() * 2 );
+			vol.raw_all = dim3{ unsigned( vol._->_.raw().x ),
+								unsigned( vol._->_.raw().y ),
+								unsigned( vol._->_.raw().z ) };
 			return vol;
 		}
 
 	public:
 		dim3 dim() const { return grid_dim; }
 		cuda::Extent block_dim() const { return _->block_dim; }
-		uint3 padding() const { return _->padding; }
+		uint3 padding() const { return uint3{ unsigned( _->_.padding() ),
+											  unsigned( _->_.padding() ),
+											  unsigned( _->_.padding() ) }; }
 
 		ArchievedVolumeBlock<Voxel> get_block( uint3 idx )
 		{
