@@ -4,14 +4,14 @@
 #include <cuda_runtime.h>
 #include <nv/helper_math.h>
 
-#include "attribute.hpp"
+#include <VMUtils/attributes.hpp>
 
 namespace vol
 {
 struct Box3D
 {
-	VOL_DEFINE_ATTRIBUTE( float3, min );
-	VOL_DEFINE_ATTRIBUTE( float3, max );
+	VM_DEFINE_ATTRIBUTE( float3, min );
+	VM_DEFINE_ATTRIBUTE( float3, max );
 
 public:
 	__host__ __device__ float3 center() const { return ( min + max ) / 2; }
@@ -27,8 +27,8 @@ inline std::ostream &operator<<( std::ostream &os, Box3D const &box )
 
 struct Ray3D
 {
-	VOL_DEFINE_ATTRIBUTE( float3, o );
-	VOL_DEFINE_ATTRIBUTE( float3, d );
+	VM_DEFINE_ATTRIBUTE( float3, o );
+	VM_DEFINE_ATTRIBUTE( float3, d );
 
 public:
 	__host__ __device__ bool intersect( Box3D const &box, float &tnear, float &tfar )
@@ -40,13 +40,13 @@ public:
 		float3 tmin = fminf( ttop, tbot );
 		float3 tmax = fmaxf( ttop, tbot );
 
-		// if ( isinf( tmin.x ) ) tmin.x = -std::numeric_limits<float>::infinity();
-		// if ( isinf( tmin.y ) ) tmin.y = -std::numeric_limits<float>::infinity();
-		// if ( isinf( tmin.z ) ) tmin.z = -std::numeric_limits<float>::infinity();
+		if ( isinf( tmin.x ) ) tmin.x = -std::numeric_limits<float>::infinity();
+		if ( isinf( tmin.y ) ) tmin.y = -std::numeric_limits<float>::infinity();
+		if ( isinf( tmin.z ) ) tmin.z = -std::numeric_limits<float>::infinity();
 
-		// if ( isinf( tmax.x ) ) tmax.x = std::numeric_limits<float>::infinity();
-		// if ( isinf( tmax.y ) ) tmax.y = std::numeric_limits<float>::infinity();
-		// if ( isinf( tmax.z ) ) tmax.z = std::numeric_limits<float>::infinity();
+		if ( isinf( tmax.x ) ) tmax.x = std::numeric_limits<float>::infinity();
+		if ( isinf( tmax.y ) ) tmax.y = std::numeric_limits<float>::infinity();
+		if ( isinf( tmax.z ) ) tmax.z = std::numeric_limits<float>::infinity();
 
 		tnear = fmaxf( fmaxf( tmin.x, tmin.y ), tmin.z );
 		tfar = fminf( fminf( tmax.x, tmax.y ), tmax.z );

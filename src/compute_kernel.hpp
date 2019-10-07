@@ -3,6 +3,7 @@
 #include <cudafx/image.hpp>
 #include <cudafx/kernel.hpp>
 #include <VMUtils/modules.hpp>
+#include <VMUtils/attributes.hpp>
 
 #include "utils/volume.hpp"
 #include "utils/math.hpp"
@@ -41,16 +42,16 @@ VM_EXPORT
 
 	struct Camera
 	{
-		VOL_DEFINE_ATTRIBUTE( float3, p );
-		VOL_DEFINE_ATTRIBUTE( float3, d );
-		VOL_DEFINE_ATTRIBUTE( float3, u );
-		VOL_DEFINE_ATTRIBUTE( float3, v );
+		VM_DEFINE_ATTRIBUTE( float3, p );
+		VM_DEFINE_ATTRIBUTE( float3, d );
+		VM_DEFINE_ATTRIBUTE( float3, u );
+		VM_DEFINE_ATTRIBUTE( float3, v );
 
 	public:
 		struct Builder
 		{
-			VOL_DEFINE_ATTRIBUTE( float3, pos ) = float3{ 0, 0, 4 };
-			VOL_DEFINE_ATTRIBUTE( float3, up ) = float3{ 0, -1, 0 };
+			VM_DEFINE_ATTRIBUTE( float3, pos ) = float3{ 0, 0, 4 };
+			VM_DEFINE_ATTRIBUTE( float3, up ) = float3{ 0, -1, 0 };
 			// using a fixed fov of tg(theta) = 1/2
 
 		public:
@@ -72,10 +73,10 @@ VM_EXPORT
 
 	struct RenderOptions
 	{
-		VOL_DEFINE_ATTRIBUTE( Camera, camera );
-		VOL_DEFINE_ATTRIBUTE( Box3D, box );
-		VOL_DEFINE_ATTRIBUTE( float3, inner_scale );
-		VOL_DEFINE_ATTRIBUTE( float3, block_index );
+		VM_DEFINE_ATTRIBUTE( Camera, camera );
+		VM_DEFINE_ATTRIBUTE( Box3D, box );
+		VM_DEFINE_ATTRIBUTE( float3, inner_scale );
+		VM_DEFINE_ATTRIBUTE( float3, block_index );
 	};
 
 	extern void bind_texture( cuda::Array3D<Voxel> const &arr );

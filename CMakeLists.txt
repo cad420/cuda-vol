@@ -42,7 +42,8 @@ if (VOL_BUILD_RENDERER)
 	#  -v  
 	--expt-extended-lambda
 	--use_fast_math
-	--keep-device-functions
+  --keep-device-functions
+  --expt-relaxed-constexpr
 	-keep
 	-maxrregcount
 	32
