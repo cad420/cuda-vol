@@ -8,6 +8,7 @@
 #include <cudafx/memory.hpp>
 #include <VMUtils/concepts.hpp>
 #include <VMUtils/modules.hpp>
+#include <vocomp/index/index.hpp>
 #include <vocomp/refine/extractor.hpp>
 #include <vocomp/video/decompressor.hpp>
 
@@ -93,7 +94,7 @@ VM_EXPORT
 			buffer.resize( _->block_size );
 			auto buffer_ptr = const_cast<char *>( buffer.c_str() );
 			SliceWriter writer( buffer_ptr, _->block_size );
-			auto i = voxel::Idx{}
+			auto i = index::Idx{}
 					   .set_x( idx.x )
 					   .set_y( idx.y )
 					   .set_z( idx.z );
@@ -120,15 +121,15 @@ VM_EXPORT
 			ifstream is( file_name, ios::binary | ios::ate );
 			auto is_len = is.tellg();
 			std::shared_ptr<vol::Pipe> decomp;
-			auto p1 = file_name.find_last_of('.');
-			auto p2 = file_name.find_last_of('.', p1 - 1);
-			auto method = file_name.substr(p2 + 1, p1 - p2 - 1);
+			auto p1 = file_name.find_last_of( '.' );
+			auto p2 = file_name.find_last_of( '.', p1 - 1 );
+			auto method = file_name.substr( p2 + 1, p1 - p2 - 1 );
 			if ( method == "h264" || method == "hevc" ) {
 				decomp = std::make_shared<vol::video::Decompressor>();
-			} else if (method == "none") {
+			} else if ( method == "none" ) {
 				decomp = std::make_shared<vol::Copy>();
 			} else {
-				throw std::logic_error(vm::fmt("unrecognized decompression method: {}", method));
+				throw std::logic_error( vm::fmt( "unrecognized decompression method: {}", method ) );
 			}
 
 			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), is_len, decomp );

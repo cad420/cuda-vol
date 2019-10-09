@@ -20,7 +20,7 @@ int round_up_div( int a, int b )
 int main( int argc, char **argv )
 {
 	cxxopts::Options options( "vol", "Cuda based offline volume renderer" );
-	options.add_options()( "i,input", "input lvd file name", cxxopts::value<string>() )(
+	options.add_options()( "i,input", "input compressed file name", cxxopts::value<string>() )(
 	  "h,help", "show this help message" )(
 	  "d,dim", "output image dim", cxxopts::value<unsigned>()->default_value( "2048" ) )(
 	  "o,output", "place the output image into <file>", cxxopts::value<string>()->default_value( "a.png" ) )(

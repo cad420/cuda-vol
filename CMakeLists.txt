@@ -65,7 +65,9 @@ if (VOL_BUILD_RENDERER)
     PROPERTY CUDA_SEPARABLE_COMPILATION ON
   )
   vm_target_dependency(vol cudafx PRIVATE)
-  vm_target_dependency(vol voextract PRIVATE)
+  vm_target_dependency(vol voxel_extract PRIVATE)
+  vm_target_dependency(vol video_decompress PRIVATE)
+  target_link_libraries(vol ${CUDA_CUDA_LIBRARY})
 
 endif()
 
