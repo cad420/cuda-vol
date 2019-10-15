@@ -20,25 +20,39 @@ namespace cuda = cufx;
 template <typename Voxel>
 struct VolumeInner : vm::NoCopy, vm::NoMove
 {
-	VolumeInner( ifstream &&is, std::size_t is_len, std::shared_ptr<vol::Pipe> decomp ) :
+	VolumeInner( ifstream &&is, std::size_t is_len,
+				 std::string const &method ) :
 	  is( std::move( is ) ),
 	  reader( this->is, 0, is_len ),
-	  decomp( decomp ),
-	  _( reader, *decomp ),
+	  _( reader ),
 	  block_dim( cuda::Extent{}
 				   .set_width( _.block_size() )
 				   .set_height( _.block_size() )
 				   .set_depth( _.block_size() ) ),
 	  block_size( sizeof( Voxel ) * block_dim.size() )
 	{
+		if ( method == "h264" || method == "hevc" ) {
+			auto reader = _.extract(
+			  index::Idx{}
+				.set_x( 0 )
+				.set_y( 0 )
+				.set_z( 0 )
+			  // _.index().begin()->first
+			);  // examine the first block to make sure encoding
+			decomp = std::make_shared<vol::video::Decompressor>( reader );
+		} else if ( method == "none" ) {
+			decomp = std::make_shared<vol::Copy>();
+		} else {
+			throw std::logic_error( vm::fmt( "unrecognized decompression method: {}", method ) );
+		}
 	}
 
 	ifstream is;
 	StreamReader reader;
-	std::shared_ptr<vol::Pipe> decomp;
 	vol::refine::Extractor _;
 	cuda::Extent block_dim;
 	size_t block_size;
+	std::shared_ptr<vol::Pipe> decomp;
 };
 
 VM_EXPORT
@@ -98,9 +112,8 @@ VM_EXPORT
 					   .set_x( idx.x )
 					   .set_y( idx.y )
 					   .set_z( idx.z );
-			if ( !_->_.extract( i, writer ) ) {
-				throw runtime_error( "failed to read block" );
-			}
+			auto reader = _->_.extract( i );
+			_->decomp->transfer( reader, writer );
 			return VolumeBlock<Voxel>( std::move( buffer ), _->block_dim );
 		}
 		uint3 index() const { return idx; }
@@ -120,19 +133,11 @@ VM_EXPORT
 			Volume vol;
 			ifstream is( file_name, ios::binary | ios::ate );
 			auto is_len = is.tellg();
-			std::shared_ptr<vol::Pipe> decomp;
 			auto p1 = file_name.find_last_of( '.' );
 			auto p2 = file_name.find_last_of( '.', p1 - 1 );
 			auto method = file_name.substr( p2 + 1, p1 - p2 - 1 );
-			if ( method == "h264" || method == "hevc" ) {
-				decomp = std::make_shared<vol::video::Decompressor>();
-			} else if ( method == "none" ) {
-				decomp = std::make_shared<vol::Copy>();
-			} else {
-				throw std::logic_error( vm::fmt( "unrecognized decompression method: {}", method ) );
-			}
 
-			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), is_len, decomp );
+			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), is_len, method );
 			auto len = vol._->_.block_size();
 			vol.block_stride = vol._->block_size;
 			vol.grid_dim = dim3( unsigned( vol._->_.adjusted().x / len ),
