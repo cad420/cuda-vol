@@ -39,7 +39,14 @@ struct VolumeInner : vm::NoCopy, vm::NoMove
 				.set_z( 0 )
 			  // _.index().begin()->first
 			);  // examine the first block to make sure encoding
-			decomp = std::make_shared<vol::video::Decompressor>( reader );
+			decomp = std::make_shared<vol::video::Decompressor>(
+			  [&] {
+				  if ( method == "h264" ) {
+					  return video::EncodeMethod::H264;
+				  } else {
+					  return video::EncodeMethod::HEVC;
+				  }
+			  }() );
 		} else if ( method == "none" ) {
 			decomp = std::make_shared<vol::Copy>();
 		} else {
