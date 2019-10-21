@@ -60,6 +60,9 @@ if (VOL_BUILD_RENDERER)
   cuda_add_executable(vol
     ${SOURCES}
   )
+  add_definitions(
+	  -DKOI_NO_LIBUV_REACTOR
+  )
   set_property(
     TARGET vol
     PROPERTY CUDA_SEPARABLE_COMPILATION ON

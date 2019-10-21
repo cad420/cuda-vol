@@ -39,14 +39,13 @@ struct VolumeInner : vm::NoCopy, vm::NoMove
 				.set_z( 0 )
 			  // _.index().begin()->first
 			);  // examine the first block to make sure encoding
-			decomp = std::make_shared<vol::video::Decompressor>(
-			  [&] {
-				  if ( method == "h264" ) {
-					  return video::EncodeMethod::H264;
-				  } else {
-					  return video::EncodeMethod::HEVC;
-				  }
-			  }() );
+			auto opts = vol::video::DecompressorOptions{};
+			if ( method == "h264" ) {
+				opts.encode = video::EncodeMethod::H264;
+			} else {
+				opts.encode = video::EncodeMethod::HEVC;
+			}
+			decomp = std::make_shared<vol::video::Decompressor>( opts );
 		} else if ( method == "none" ) {
 			decomp = std::make_shared<vol::Copy>();
 		} else {
@@ -68,7 +67,7 @@ VM_EXPORT
 	struct Volume;
 
 	template <typename Voxel>
-	struct ArchievedVolumeBlock;
+	struct ArchivedVolumeBlock;
 
 	template <typename Voxel>
 	struct VolumeBlock
@@ -103,13 +102,13 @@ VM_EXPORT
 		}
 
 		shared_ptr<Inner> _ = make_shared<Inner>();
-		friend struct ArchievedVolumeBlock<Voxel>;
+		friend struct ArchivedVolumeBlock<Voxel>;
 	};
 
 	template <typename Voxel>
-	struct ArchievedVolumeBlock
+	struct ArchivedVolumeBlock
 	{
-		VolumeBlock<Voxel> unarchieve() const
+		VolumeBlock<Voxel> unarchive() const
 		{
 			string buffer;
 			buffer.resize( _->block_size );
@@ -122,6 +121,21 @@ VM_EXPORT
 			auto reader = _->_.extract( i );
 			_->decomp->transfer( reader, writer );
 			return VolumeBlock<Voxel>( std::move( buffer ), _->block_dim );
+		}
+		cufx::Extent unarchive_into( cufx::MemoryView1D<unsigned char> const &swap ) const
+		{
+			auto i = index::Idx{}
+					   .set_x( idx.x )
+					   .set_y( idx.y )
+					   .set_z( idx.z );
+			auto reader = _->_.extract( i );
+			if ( auto video = dynamic_cast<vol::video::Decompressor *>( _->decomp.get() ) ) {
+				auto &dim = _->block_dim;
+				video->decompress( reader, swap );
+				return dim;
+			} else {
+				throw std::runtime_error( "unsupported archive" );
+			}
 		}
 		uint3 index() const { return idx; }
 
@@ -164,21 +178,21 @@ VM_EXPORT
 											  unsigned( _->_.padding() ),
 											  unsigned( _->_.padding() ) }; }
 
-		ArchievedVolumeBlock<Voxel> get_block( uint3 idx )
+		ArchivedVolumeBlock<Voxel> get_block( uint3 idx )
 		{
 			auto block_id = idx.x +
 							idx.y * grid_dim.x +
 							idx.z * grid_dim.x * grid_dim.y;
-			ArchievedVolumeBlock<Voxel> block;
+			ArchivedVolumeBlock<Voxel> block;
 			block._ = _;
 			block.offset = offset + block_id * block_stride + block_offset;
 			block.idx = idx;
 			return block;
 		}
-		vector<ArchievedVolumeBlock<Voxel>> get_blocks( uint3 idmin, uint3 idmax )
+		vector<ArchivedVolumeBlock<Voxel>> get_blocks( uint3 idmin, uint3 idmax )
 		{
 			uint3 idx;
-			vector<ArchievedVolumeBlock<Voxel>> _;
+			vector<ArchivedVolumeBlock<Voxel>> _;
 			for ( idx.z = idmin.z; idx.z < idmax.z; ++idx.z ) {
 				for ( idx.y = idmin.y; idx.y < idmax.y; ++idx.y ) {
 					for ( idx.x = idmin.x; idx.x < idmax.x; ++idx.x ) {
@@ -188,7 +202,7 @@ VM_EXPORT
 			}
 			return _;
 		}
-		vector<ArchievedVolumeBlock<Voxel>> get_blocks()
+		vector<ArchivedVolumeBlock<Voxel>> get_blocks()
 		{
 			return get_blocks( uint3{ 0, 0, 0 }, uint3{ grid_dim.x, grid_dim.y, grid_dim.z } );
 		}
