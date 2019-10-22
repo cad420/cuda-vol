@@ -100,8 +100,8 @@ int main( int argc, char **argv )
 		cuda::Array3D<Voxel> block_arr[ 2 ] = { device.alloc_arraynd<Voxel, 3>( block_dim ),
 												device.alloc_arraynd<Voxel, 3>( block_dim ) };
 		cuda::Stream swap[ 2 ];
-		vector<cuda::GlobalMemory> block_swap = { device.alloc_global( block_dim.size() ), 
-												  device.alloc_global( block_dim.size() ) };
+		vector<cuda::GlobalMemory> block_swap = { device.alloc_global( block_dim.size() * 2 ),
+												  device.alloc_global( block_dim.size() * 2 ) };
 		int curr_swap = 0;
 		tasks.wait();
 		for ( auto &arch : blocks ) {
@@ -110,24 +110,20 @@ int main( int argc, char **argv )
 			auto &arr = block_arr[ curr_swap ];
 			auto &stream = swap[ curr_swap ];
 
-			// if (arch.index().x == 0 && arch.index().y == 0 && arch.index().z == 0) break;
-
 			auto dim = arch.unarchive_into( block.view_1d<unsigned char>( block.size() ) );
 
-			// vector<unsigned char> vec(block_dim.size() * 2);
-			// auto dim = arch.unarchive_into( cufx::MemoryView1D<unsigned char>(vec.data(), vec.size()) );
-			
-			// for (int i = 0; i != 128; ++i) {
-			// 	vm::print("{} ", int(vec[i]));
+			// vector<unsigned char> vec( block_dim.size() * 2 );
+			// auto dim = arch.unarchive_into( cufx::MemoryView1D<unsigned char>( vec.data(), vec.size() ) );
+			// for ( int i = 0; i != 128; ++i ) {
+			// 	vm::print( "{} ", int( vec[ i ] ) );
 			// }
-
-			// vm::println("{}", (void*)vec.data());
+			// vm::println( "{}", (void *)vec.data() );
 			// return 0;
 
 			auto view_info = cufx::MemoryView2DInfo{}
-						.set_stride( dim.width * sizeof( char ) )
-						.set_width( dim.width )
-						.set_height( dim.height );
+							   .set_stride( dim.width * sizeof( char ) )
+							   .set_width( dim.width )
+							   .set_height( dim.height );
 			auto view = block.view_3d<unsigned char>( view_info, dim );
 			cufx::memory_transfer( arr, view )
 			  .launch_async( stream );
@@ -141,10 +137,10 @@ int main( int argc, char **argv )
 			swap[ 1 - curr_swap ].wait().unwrap();
 			bind_texture( block_arr[ curr_swap ] );
 			auto opts = RenderOptions{}
-						.set_camera( camera )
-						.set_box( box )
-						.set_inner_scale( inner_scale )
-						.set_block_index( idx / grid_dim_max );
+						  .set_camera( camera )
+						  .set_box( box )
+						  .set_inner_scale( inner_scale )
+						  .set_block_index( idx / grid_dim_max );
 			kernel( launch_info, img_view, opts )
 			  .launch_async( stream );
 			curr_swap = 1 - curr_swap;
