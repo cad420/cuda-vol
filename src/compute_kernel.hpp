@@ -4,8 +4,6 @@
 #include <cudafx/kernel.hpp>
 #include <VMUtils/modules.hpp>
 #include <VMUtils/attributes.hpp>
-
-#include "utils/volume.hpp"
 #include "utils/math.hpp"
 
 VM_BEGIN_MODULE( vol )

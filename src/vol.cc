@@ -56,8 +56,8 @@ int main( int argc, char **argv )
 
 		cuda::Image<Pixel> image( img_size, img_size );
 		auto device_swap = device.alloc_image_swap( image );
-		auto view = image.view().with_device_memory( device_swap.second );
-		tasks.add( view.copy_to_device().launch_async() );
+		auto img_view = image.view().with_device_memory( device_swap.second );
+		tasks.add( img_view.copy_to_device().launch_async() );
 
 		auto volume = Volume<Voxel>::from_compressed( in );
 		auto grid_dim = volume.dim();
@@ -79,7 +79,7 @@ int main( int argc, char **argv )
 		auto blocks = volume.get_blocks();
 		stable_sort(
 		  blocks.begin(), blocks.end(),
-		  [&]( ArchievedVolumeBlock<Voxel> const &a, ArchievedVolumeBlock<Voxel> const &b ) {
+		  [&]( ArchivedVolumeBlock<Voxel> const &a, ArchivedVolumeBlock<Voxel> const &b ) {
 			  auto x = float3{ float( a.index().x ),
 							   float( a.index().y ),
 							   float( a.index().z ) };
@@ -94,20 +94,39 @@ int main( int argc, char **argv )
 		auto kernel_block_dim = dim3( 32, 32 );
 		auto launch_info = cuda::KernelLaunchInfo{}
 							 .set_device( devices[ 0 ] )
-							 .set_grid_dim( round_up_div( view.width(), kernel_block_dim.x ),
-											round_up_div( view.height(), kernel_block_dim.y ) )
+							 .set_grid_dim( round_up_div( img_view.width(), kernel_block_dim.x ),
+											round_up_div( img_view.height(), kernel_block_dim.y ) )
 							 .set_block_dim( kernel_block_dim );
 		cuda::Array3D<Voxel> block_arr[ 2 ] = { device.alloc_arraynd<Voxel, 3>( block_dim ),
 												device.alloc_arraynd<Voxel, 3>( block_dim ) };
 		cuda::Stream swap[ 2 ];
-		vector<shared_ptr<VolumeBlock<Voxel>>> block( 2 );
+		vector<cuda::GlobalMemory> block_swap = { device.alloc_global( block_dim.size() * 2 ),
+												  device.alloc_global( block_dim.size() * 2 ) };
 		int curr_swap = 0;
 		tasks.wait();
 		for ( auto &arch : blocks ) {
 			cout << "rendering block: " << arch.index() << endl;
-			block[ curr_swap ] = std::make_shared<VolumeBlock<Voxel>>( arch.unarchieve() );
-			cuda::memory_transfer( block_arr[ curr_swap ], block[ curr_swap ]->view() )
-			  .launch_async( swap[ curr_swap ] );
+			auto &block = block_swap[ curr_swap ];
+			auto &arr = block_arr[ curr_swap ];
+			auto &stream = swap[ curr_swap ];
+
+			auto dim = arch.unarchive_into( block.view_1d<unsigned char>( block.size() ) );
+
+			// vector<unsigned char> vec( block_dim.size() * 2 );
+			// auto dim = arch.unarchive_into( cufx::MemoryView1D<unsigned char>( vec.data(), vec.size() ) );
+			// for ( int i = 0; i != 128; ++i ) {
+			// 	vm::print( "{} ", int( vec[ i ] ) );
+			// }
+			// vm::println( "{}", (void *)vec.data() );
+			// return 0;
+
+			auto view_info = cufx::MemoryView2DInfo{}
+							   .set_stride( dim.width * sizeof( char ) )
+							   .set_width( dim.width )
+							   .set_height( dim.height );
+			auto view = block.view_3d<unsigned char>( view_info, dim );
+			cufx::memory_transfer( arr, view )
+			  .launch_async( stream );
 			auto idx = float3{ float( arch.index().x ),
 							   float( arch.index().y ),
 							   float( arch.index().z ) };
@@ -117,8 +136,13 @@ int main( int argc, char **argv )
 			cout << box << endl;
 			swap[ 1 - curr_swap ].wait().unwrap();
 			bind_texture( block_arr[ curr_swap ] );
-			kernel( launch_info, view, RenderOptions{}.set_camera( camera ).set_box( box ).set_inner_scale( inner_scale ).set_block_index( idx / grid_dim_max ) )
-			  .launch_async( swap[ curr_swap ] );
+			auto opts = RenderOptions{}
+						  .set_camera( camera )
+						  .set_box( box )
+						  .set_inner_scale( inner_scale )
+						  .set_block_index( idx / grid_dim_max );
+			kernel( launch_info, img_view, opts )
+			  .launch_async( stream );
 			curr_swap = 1 - curr_swap;
 		}
 		swap[ 0 ].wait().unwrap();
@@ -126,7 +150,7 @@ int main( int argc, char **argv )
 
 		cout << "render finished" << endl;
 
-		view.copy_from_device().launch();
+		img_view.copy_from_device().launch();
 		image.dump( out );
 		cout << "written image " << out << endl;
 		return 0;

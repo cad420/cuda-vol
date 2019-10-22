@@ -20,7 +20,7 @@ set(VOCOMP_BUILD_EXTRACTOR ON)
 set(VOCOMP_BUILD_TOOLS OFF)
 vm_external_module(
   GIT_REPOSITORY https://github.com/cad420/voxel-compression
-  GIT_TAG        master
+  GIT_TAG        feature/streaming
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -g")
@@ -59,6 +59,9 @@ if (VOL_BUILD_RENDERER)
 
   cuda_add_executable(vol
     ${SOURCES}
+  )
+  add_definitions(
+	  -DKOI_NO_LIBUV_REACTOR
   )
   set_property(
     TARGET vol
