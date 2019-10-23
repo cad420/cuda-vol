@@ -25,6 +25,7 @@ int main( int argc, char **argv )
 	  "d,dim", "output image dim", cxxopts::value<unsigned>()->default_value( "2048" ) )(
 	  "o,output", "place the output image into <file>", cxxopts::value<string>()->default_value( "a.png" ) )(
 	  "s,sample", "msaa sample points", cxxopts::value<std::size_t>()->default_value( "1" ) )(
+	  "no-hwaccel", "disable hardware acceleration" )(
 	  "x", "x", cxxopts::value<float>()->default_value( "0" ) )(
 	  "y", "y", cxxopts::value<float>()->default_value( "0" ) )(
 	  "z", "z", cxxopts::value<float>()->default_value( "4" ) );
@@ -49,6 +50,7 @@ int main( int argc, char **argv )
 
 	auto devices = cuda::Device::scan();
 	auto device = devices[ 0 ];
+	bool direct_gpu_memory = !opts.count( "no-hwaccel" );
 
 	auto nx_msaa_impl = [&]( int nx, auto pixel, auto &kernel ) {
 		using Pixel = decltype( pixel );
@@ -100,32 +102,46 @@ int main( int argc, char **argv )
 		cuda::Array3D<Voxel> block_arr[ 2 ] = { device.alloc_arraynd<Voxel, 3>( block_dim ),
 												device.alloc_arraynd<Voxel, 3>( block_dim ) };
 		cuda::Stream swap[ 2 ];
-		vector<cuda::GlobalMemory> block_swap = { device.alloc_global( block_dim.size() * 2 ),
-												  device.alloc_global( block_dim.size() * 2 ) };
+		vector<cuda::GlobalMemory> block_swap;
+		if ( direct_gpu_memory ) {
+			vm::println( "hardware acceleration enabled" );
+			for ( int i = 0; i != 2; ++i ) {
+				block_swap.emplace_back( device.alloc_global( block_dim.size() * 2 ) );
+			}
+		}
+
 		int curr_swap = 0;
 		tasks.wait();
+		int done_blocks = 0;
+
 		for ( auto &arch : blocks ) {
-			cout << "rendering block: " << arch.index() << endl;
+			vm::println( "rendering block: {}, {} out of {}", arch.index(), ++done_blocks, blocks.size() );
 			auto &block = block_swap[ curr_swap ];
 			auto &arr = block_arr[ curr_swap ];
 			auto &stream = swap[ curr_swap ];
 
-			auto dim = arch.unarchive_into( block.view_1d<unsigned char>( block.size() ) );
+			thread_local vector<unsigned char> host_buffer;
 
-			// vector<unsigned char> vec( block_dim.size() * 2 );
-			// auto dim = arch.unarchive_into( cufx::MemoryView1D<unsigned char>( vec.data(), vec.size() ) );
-			// for ( int i = 0; i != 128; ++i ) {
-			// 	vm::print( "{} ", int( vec[ i ] ) );
-			// }
-			// vm::println( "{}", (void *)vec.data() );
-			// return 0;
+			vm::Option<cufx::MemoryView1D<unsigned char>> dst_1d;
+			if ( direct_gpu_memory ) {
+				dst_1d = block.view_1d<unsigned char>( block.size() );
+			} else {
+				host_buffer.resize( block_dim.size() * 2 );
+				dst_1d = cufx::MemoryView1D<unsigned char>( host_buffer.data(), host_buffer.size() );
+			}
+			auto dim = arch.unarchive_into( dst_1d.value() );
 
 			auto view_info = cufx::MemoryView2DInfo{}
 							   .set_stride( dim.width * sizeof( char ) )
 							   .set_width( dim.width )
 							   .set_height( dim.height );
-			auto view = block.view_3d<unsigned char>( view_info, dim );
-			cufx::memory_transfer( arr, view )
+			vm::Option<cufx::MemoryView3D<unsigned char>> src_3d;
+			if ( direct_gpu_memory ) {
+				src_3d = block.view_3d<unsigned char>( view_info, dim );
+			} else {
+				src_3d = cufx::MemoryView3D<unsigned char>( host_buffer.data(), view_info, dim );
+			}
+			cufx::memory_transfer( arr, src_3d.value() )
 			  .launch_async( stream );
 			auto idx = float3{ float( arch.index().x ),
 							   float( arch.index().y ),

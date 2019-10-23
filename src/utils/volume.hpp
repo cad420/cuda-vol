@@ -153,6 +153,11 @@ VM_EXPORT
 		{
 			Volume vol;
 			ifstream is( file_name, ios::binary | ios::ate );
+
+			if ( !is ) {
+				throw std::runtime_error( vm::fmt( "unable to open input file: {}", file_name ) );
+			}
+
 			auto is_len = is.tellg();
 			auto p1 = file_name.find_last_of( '.' );
 			auto p2 = file_name.find_last_of( '.', p1 - 1 );
