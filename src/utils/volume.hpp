@@ -10,6 +10,7 @@
 #include <VMUtils/modules.hpp>
 #include <vocomp/index/index.hpp>
 #include <vocomp/refine/extractor.hpp>
+#include <vocomp/refine/pipe_factory.hpp>
 #include <vocomp/video/decompressor.hpp>
 
 VM_BEGIN_MODULE( vol )
@@ -20,39 +21,27 @@ namespace cuda = cufx;
 template <typename Voxel>
 struct VolumeInner : vm::NoCopy, vm::NoMove
 {
-	VolumeInner( ifstream &&is, std::size_t is_len,
-				 std::string const &method ) :
-	  is( std::move( is ) ),
-	  reader( this->is, 0, is_len ),
+	VolumeInner( std::string const &file_name ) :
+	  file_name( file_name ),
+	  is( [&] {
+		  std::ifstream is( file_name, ios::binary | ios::ate );
+		  if ( !is ) {
+			  throw std::runtime_error( vm::fmt( "unable to open input file: {}", file_name ) );
+		  }
+		  return is;
+	  }() ),
+	  reader( is, 0, is.tellg() ),
 	  _( reader ),
 	  block_dim( cuda::Extent{}
 				   .set_width( _.block_size() )
 				   .set_height( _.block_size() )
 				   .set_depth( _.block_size() ) ),
-	  block_size( sizeof( Voxel ) * block_dim.size() )
+	  block_size( sizeof( Voxel ) * block_dim.size() ),
+	  decomp( PipeFactory::create( file_name ) )
 	{
-		if ( method == "h264" || method == "hevc" ) {
-			auto reader = _.extract(
-			  index::Idx{}
-				.set_x( 0 )
-				.set_y( 0 )
-				.set_z( 0 )
-			  // _.index().begin()->first
-			);  // examine the first block to make sure encoding
-			auto opts = vol::video::DecompressorOptions{};
-			if ( method == "h264" ) {
-				opts.encode = video::EncodeMethod::H264;
-			} else {
-				opts.encode = video::EncodeMethod::HEVC;
-			}
-			decomp = std::make_shared<vol::video::Decompressor>( opts );
-		} else if ( method == "none" ) {
-			decomp = std::make_shared<vol::Copy>();
-		} else {
-			throw std::logic_error( vm::fmt( "unrecognized decompression method: {}", method ) );
-		}
 	}
 
+	string file_name;
 	ifstream is;
 	StreamReader reader;
 	vol::refine::Extractor _;
@@ -152,18 +141,7 @@ VM_EXPORT
 		static Volume from_compressed( const string &file_name )
 		{
 			Volume vol;
-			ifstream is( file_name, ios::binary | ios::ate );
-
-			if ( !is ) {
-				throw std::runtime_error( vm::fmt( "unable to open input file: {}", file_name ) );
-			}
-
-			auto is_len = is.tellg();
-			auto p1 = file_name.find_last_of( '.' );
-			auto p2 = file_name.find_last_of( '.', p1 - 1 );
-			auto method = file_name.substr( p2 + 1, p1 - p2 - 1 );
-
-			vol._ = make_shared<VolumeInner<Voxel>>( std::move( is ), is_len, method );
+			vol._ = make_shared<VolumeInner<Voxel>>( file_name );
 			auto len = vol._->_.block_size();
 			vol.block_stride = vol._->block_size;
 			vol.grid_dim = dim3( unsigned( vol._->_.adjusted().x / len ),
