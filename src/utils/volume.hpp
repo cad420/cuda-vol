@@ -32,21 +32,9 @@ struct VolumeInner : vm::NoCopy, vm::NoMove
 	  block_size( sizeof( Voxel ) * block_dim.size() )
 	{
 		if ( method == "h264" || method == "hevc" ) {
-			auto reader = _.extract(
-			  index::Idx{}
-				.set_x( 0 )
-				.set_y( 0 )
-				.set_z( 0 )
-			  // _.index().begin()->first
-			);  // examine the first block to make sure encoding
-			decomp = std::make_shared<vol::video::Decompressor>(
-			  [&] {
-				  if ( method == "h264" ) {
-					  return video::EncodeMethod::H264;
-				  } else {
-					  return video::EncodeMethod::HEVC;
-				  }
-			  }() );
+			// examine the first block to set encoding
+			auto reader = _.extract( _.index().begin()->first );
+			decomp = std::make_shared<vol::video::Decompressor>( reader );
 		} else if ( method == "none" ) {
 			decomp = std::make_shared<vol::Copy>();
 		} else {
