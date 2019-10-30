@@ -4,6 +4,7 @@
 #include <cudafx/kernel.hpp>
 #include <VMUtils/modules.hpp>
 #include <VMUtils/attributes.hpp>
+#include "utils/json_cuda.hpp"
 #include "utils/math.hpp"
 
 VM_BEGIN_MODULE( vol )
@@ -38,18 +39,18 @@ VM_EXPORT
 		} _[ N ] = { 0 };
 	};
 
-	struct Camera
+	struct Camera : vm::json::Serializable<Camera>
 	{
-		VM_DEFINE_ATTRIBUTE( float3, p );
-		VM_DEFINE_ATTRIBUTE( float3, d );
-		VM_DEFINE_ATTRIBUTE( float3, u );
-		VM_DEFINE_ATTRIBUTE( float3, v );
+		VM_JSON_FIELD( float3, p );
+		VM_JSON_FIELD( float3, d );
+		VM_JSON_FIELD( float3, u );
+		VM_JSON_FIELD( float3, v );
 
 	public:
-		struct Builder
+		struct Builder : vm::json::Serializable<Builder>
 		{
-			VM_DEFINE_ATTRIBUTE( float3, pos ) = float3{ 0, 0, 4 };
-			VM_DEFINE_ATTRIBUTE( float3, up ) = float3{ 0, -1, 0 };
+			VM_JSON_FIELD( float3, pos ) = { 0, 0, 4 };
+			VM_JSON_FIELD( float3, up ) = { 0, -1, 0 };
 			// using a fixed fov of tg(theta) = 1/2
 
 		public:
@@ -69,12 +70,12 @@ VM_EXPORT
 
 	using Voxel = unsigned char;
 
-	struct RenderOptions
+	struct RenderOptions : vm::json::Serializable<RenderOptions>
 	{
-		VM_DEFINE_ATTRIBUTE( Camera, camera );
-		VM_DEFINE_ATTRIBUTE( Box3D, box );
-		VM_DEFINE_ATTRIBUTE( float3, inner_scale );
-		VM_DEFINE_ATTRIBUTE( float3, block_index );
+		VM_JSON_FIELD( Camera, camera );
+		VM_JSON_FIELD( Box3D, box );
+		VM_JSON_FIELD( float3, inner_scale );
+		VM_JSON_FIELD( float3, block_index );
 	};
 
 	extern void bind_texture( cuda::Array3D<Voxel> const &arr );

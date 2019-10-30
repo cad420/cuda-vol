@@ -3,15 +3,15 @@
 #include <limits>
 #include <cuda_runtime.h>
 #include <nv/helper_math.h>
-
 #include <VMUtils/attributes.hpp>
+#include "utils/json_cuda.hpp"
 
 namespace vol
 {
-struct Box3D
+struct Box3D : vm::json::Serializable<Box3D, vm::json::AsArray>
 {
-	VM_DEFINE_ATTRIBUTE( float3, min );
-	VM_DEFINE_ATTRIBUTE( float3, max );
+	VM_JSON_FIELD( float3, min );
+	VM_JSON_FIELD( float3, max );
 
 public:
 	__host__ __device__ float3 center() const { return ( min + max ) / 2; }
