@@ -10,10 +10,6 @@ execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive)
 # install external modules
 include(scripts/external.cmake)
 vm_external_module(
-  GIT_REPOSITORY https://github.com/cad420/stbi
-  GIT_TAG        master
-)
-vm_external_module(
   GIT_REPOSITORY https://github.com/cad420/cuda-fx
   GIT_TAG        master
 )
@@ -58,7 +54,6 @@ if (VOL_BUILD_RENDERER)
     TARGET vol
     PROPERTY CUDA_SEPARABLE_COMPILATION ON
   )
-  vm_target_dependency(vol stbi PRIVATE)
   vm_target_dependency(vol cudafx PRIVATE)
 
 endif()
