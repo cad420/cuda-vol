@@ -1,9 +1,9 @@
-#include "compute_kernel.hpp"
-#include <cuda/array.hpp>
-#include <utils/math.hpp>
+#include <cudafx/array.hpp>
 
-namespace vol
-{
+#include "compute_kernel.hpp"
+#include "utils/math.hpp"
+
+VM_BEGIN_MODULE( vol )
 
 texture<Voxel, 3, cudaReadModeNormalizedFloat> tex;
 texture<float4, 1, cudaReadModeElementType> transfer_tex;
@@ -11,7 +11,10 @@ texture<float4, 1, cudaReadModeElementType> transfer_tex;
 template <std::size_t N>
 __device__ float2 msaa_sample( int idx );
 
-#define MS_SAMPLE( x, y ) { float( x / 10.f / .8f ), float( y / 10.f / .8f ) }
+#define MS_SAMPLE( x, y )                                \
+	{                                                    \
+		float( x / 10.f / .8f ), float( y / 10.f / .8f ) \
+	}
 
 template <>
 __device__ float2 msaa_sample<1>( int )
@@ -23,7 +26,7 @@ template <>
 __device__ float2 msaa_sample<2>( int i )
 {
 	static float2 _[] = { MS_SAMPLE( 4, 4 ),
-	                      MS_SAMPLE( -4, -4 ) };
+						  MS_SAMPLE( -4, -4 ) };
 	return _[ i ];
 }
 
@@ -31,9 +34,9 @@ template <>
 __device__ float2 msaa_sample<4>( int i )
 {
 	static float2 _[] = { MS_SAMPLE( -2, -6 ),
-	                      MS_SAMPLE( 6, -2 ),
-	                      MS_SAMPLE( -6, 2 ),
-	                      MS_SAMPLE( 2, 6 ) };
+						  MS_SAMPLE( 6, -2 ),
+						  MS_SAMPLE( -6, 2 ),
+						  MS_SAMPLE( 2, 6 ) };
 	return _[ i ];
 }
 
@@ -41,13 +44,13 @@ template <>
 __device__ float2 msaa_sample<8>( int i )
 {
 	static float2 _[] = { MS_SAMPLE( 1, -3 ),
-	                      MS_SAMPLE( -1, 3 ),
-	                      MS_SAMPLE( 5, 1 ),
-	                      MS_SAMPLE( -3, -5 ),
-	                      MS_SAMPLE( -5, 5 ),
-	                      MS_SAMPLE( -7, -1 ),
-	                      MS_SAMPLE( 3, 7 ),
-	                      MS_SAMPLE( 7, -7 ) };
+						  MS_SAMPLE( -1, 3 ),
+						  MS_SAMPLE( 5, 1 ),
+						  MS_SAMPLE( -3, -5 ),
+						  MS_SAMPLE( -5, 5 ),
+						  MS_SAMPLE( -7, -1 ),
+						  MS_SAMPLE( 3, 7 ),
+						  MS_SAMPLE( 7, -7 ) };
 	return _[ i ];
 }
 
@@ -55,21 +58,21 @@ template <>
 __device__ float2 msaa_sample<16>( int i )
 {
 	static float2 _[] = { MS_SAMPLE( 1, 1 ),
-	                      MS_SAMPLE( -1, -3 ),
-	                      MS_SAMPLE( -3, 2 ),
-	                      MS_SAMPLE( 4, -1 ),
-	                      MS_SAMPLE( -5, -2 ),
-	                      MS_SAMPLE( 2, 5 ),
-	                      MS_SAMPLE( 5, 3 ),
-	                      MS_SAMPLE( 3, -5 ),
-	                      MS_SAMPLE( -2, 6 ),
-	                      MS_SAMPLE( 0, -7 ),
-	                      MS_SAMPLE( -4, -6 ),
-	                      MS_SAMPLE( -6, 4 ),
-	                      MS_SAMPLE( -8, 0 ),
-	                      MS_SAMPLE( 7, -4 ),
-	                      MS_SAMPLE( 6, 7 ),
-	                      MS_SAMPLE( -7, -8 ) };
+						  MS_SAMPLE( -1, -3 ),
+						  MS_SAMPLE( -3, 2 ),
+						  MS_SAMPLE( 4, -1 ),
+						  MS_SAMPLE( -5, -2 ),
+						  MS_SAMPLE( 2, 5 ),
+						  MS_SAMPLE( 5, 3 ),
+						  MS_SAMPLE( 3, -5 ),
+						  MS_SAMPLE( -2, 6 ),
+						  MS_SAMPLE( 0, -7 ),
+						  MS_SAMPLE( -4, -6 ),
+						  MS_SAMPLE( -6, 4 ),
+						  MS_SAMPLE( -8, 0 ),
+						  MS_SAMPLE( 7, -4 ),
+						  MS_SAMPLE( 6, 7 ),
+						  MS_SAMPLE( -7, -8 ) };
 	return _[ i ];
 }
 
@@ -95,13 +98,12 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel<N>> out, RenderOptions
 	float v = y * invh * 2.f - 1.f;
 
 	for ( int i = 0; i != N; ++i ) {
-
 		auto msaa = msaa_sample<N>( i );
 
 		auto eye = Ray3D{};
 		eye.o = opts.camera.p;
-		eye.d = normalize( opts.camera.d + 
-						   opts.camera.u * ( u + msaa.x * invw ) + 
+		eye.d = normalize( opts.camera.d +
+						   opts.camera.u * ( u + msaa.x * invw ) +
 						   opts.camera.v * ( v + msaa.y * invh ) );
 
 		float tnear, tfar;
@@ -132,17 +134,19 @@ __global__ void render_kernel_impl( cuda::ImageView<Pixel<N>> out, RenderOptions
 
 		sample.v = sum;
 		sample.t = fmaxf( t, tfar );
-
 	}
 	// pixel._ = float4{block_index.x, block_index.y, block_index.z, 0.f} * .5 + .5;
 	// pixel._ = float4{t, t, t, 0.f} - 5.f;
 }
 
-VOL_DEFINE_CUDA_KERNEL( render_kernel, render_kernel_impl<1> );
-VOL_DEFINE_CUDA_KERNEL( render_kernel_2x, render_kernel_impl<2> );
-VOL_DEFINE_CUDA_KERNEL( render_kernel_4x, render_kernel_impl<4> );
-VOL_DEFINE_CUDA_KERNEL( render_kernel_8x, render_kernel_impl<8> );
-VOL_DEFINE_CUDA_KERNEL( render_kernel_16x, render_kernel_impl<16> );
+VM_EXPORT
+{
+	CUFX_DEFINE_KERNEL( render_kernel, render_kernel_impl<1> );
+	CUFX_DEFINE_KERNEL( render_kernel_2x, render_kernel_impl<2> );
+	CUFX_DEFINE_KERNEL( render_kernel_4x, render_kernel_impl<4> );
+	CUFX_DEFINE_KERNEL( render_kernel_8x, render_kernel_impl<8> );
+	CUFX_DEFINE_KERNEL( render_kernel_16x, render_kernel_impl<16> );
+}
 
 namespace _
 {
@@ -177,9 +181,12 @@ static int __ = [] {
 }();
 }
 
-void bind_texture( cuda::Array3D<Voxel> const &arr )
+VM_EXPORT
 {
-	arr.bind_to_texture( tex );
+	void bind_texture( cuda::Array3D<Voxel> const &arr )
+	{
+		arr.bind_to_texture( tex );
+	}
 }
 
-}  // namespace vol
+VM_END_MODULE()

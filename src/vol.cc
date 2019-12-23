@@ -4,12 +4,13 @@
 #include <algorithm>
 #include <cxxopts.hpp>
 
-#include <cuda/device.hpp>
+#include <cudafx/device.hpp>
 #include <compute_kernel.hpp>
 #include <utils/volume.hpp>
 
 using namespace std;
 using namespace vol;
+namespace cuda = cufx;
 
 int round_up_div( int a, int b )
 {

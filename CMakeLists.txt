@@ -1,24 +1,37 @@
-cmake_minimum_required(VERSION 2.7)
+cmake_minimum_required(VERSION 3.9)
 set(CMAKE_CXX_STANDARD 14)
 project(vol)
 
 option(VOL_BUILD_RENDERER "set on to build renderer" ON)
 option(VOL_BUILD_TOOLS "set on to build tools" ON)
 
+find_package(Git)
+execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive)
+# install external modules
+include(scripts/external.cmake)
+vm_external_module(
+  GIT_REPOSITORY https://github.com/cad420/stbi
+  GIT_TAG        master
+)
+vm_external_module(
+  GIT_REPOSITORY https://github.com/cad420/cuda-fx
+  GIT_TAG        master
+)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -pg")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast")
 
 include_directories(
-  "${CMAKE_SOURCE_DIR}/include"
-  "${CMAKE_SOURCE_DIR}/src"
+  include
+  src
 )
 
 if (VOL_BUILD_RENDERER)
 
   find_package(CUDA REQUIRED)
-  set(CUDA_ATTACH_VS_BUILD_RULE_TO_CUDA_FILE ON)
-  set(CUDA_SEPARABLE_COMPILATION ON)
+  # set(CUDA_ATTACH_VS_BUILD_RULE_TO_CUDA_FILE ON)
+  # set(CUDA_SEPARABLE_COMPILATION ON)
   set(CUDA_NVCC_FLAGS ${CMAKE_NVCC_FLAGS}
 	-std=c++14
 	#  -v  
@@ -34,19 +47,19 @@ if (VOL_BUILD_RENDERER)
   )
 
   file(GLOB_RECURSE SOURCES
-	"${CMAKE_SOURCE_DIR}/src/*.cc"
-	"${CMAKE_SOURCE_DIR}/src/*.cu"
+    src/*.cc
+    src/*.cu
   )
 
   cuda_add_executable(vol
-	${SOURCES}
+    ${SOURCES}
   )
-
-  if (CMAKE_CXX_COMPILER MATCHES MSVC)
-
-  else()
-    target_link_libraries(vol pthread)
-  endif()
+  set_property(
+    TARGET vol
+    PROPERTY CUDA_SEPARABLE_COMPILATION ON
+  )
+  vm_target_dependency(vol stbi PRIVATE)
+  vm_target_dependency(vol cudafx PRIVATE)
 
 endif()
 
